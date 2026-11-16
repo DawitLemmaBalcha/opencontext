@@ -20,7 +20,8 @@ from oc_worker.providers.http_status import (
 )
 
 _SYSTEM_PROMPT = (
-    "You analyze individual frames of a recorded software session. "
+    "You analyze individual images and frames from software sessions or "
+    "visual references. "
     "Respond with ONLY a JSON object using exactly these keys: "
     '"certainty" ("OBSERVED"|"INFERRED"|"UNCERTAIN"), "sceneTitle", '
     '"visualDescription", "uiElements" (array of short strings, one per '
@@ -74,11 +75,22 @@ class OpenAICompatibleVisionProvider:
 
     def analyze(self, frame_bytes: bytes, context: dict[str, Any]) -> dict[str, Any]:
         encoded = base64.b64encode(frame_bytes).decode("ascii")
-        user_text = (
-            f"Frame at {context.get('timestampSec')}s of "
-            f"{context.get('sourceName') or 'the video'} "
-            f"(detail level {context.get('detailLevel')}). Analyze this frame."
-        )
+        if context.get("sourceKind") == "image":
+            user_text = (
+                f"Still image {context.get('sourceName') or 'provided by the user'} "
+                f"(detail level {context.get('detailLevel')}). Analyze the image."
+            )
+        elif context.get("sourceKind") == "pdf":
+            user_text = (
+                f"{context.get('sourceName') or 'PDF page'} "
+                f"(detail level {context.get('detailLevel')}). Analyze this rendered PDF page."
+            )
+        else:
+            user_text = (
+                f"Frame at {context.get('timestampSec')}s of "
+                f"{context.get('sourceName') or 'the video'} "
+                f"(detail level {context.get('detailLevel')}). Analyze this frame."
+            )
         payload = {
             "model": self.model,
             "temperature": 0,

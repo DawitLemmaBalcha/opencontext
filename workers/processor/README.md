@@ -1,8 +1,9 @@
 # opencontext-video
 
-The OpenContext media processing worker. It ingests uploaded video files and
-runs the media-to-context pipeline: extracting audio and frames, transcribing
-speech, applying vision and OCR, aligning results on a shared timeline, and
+The OpenContext media processing worker. It ingests uploaded videos, still
+images, image sets, and PDFs, then runs the media-to-context pipeline:
+extracting audio and frames, rendering PDF pages, transcribing speech when
+present, applying vision and OCR, aligning results on a shared timeline, and
 producing evidence-linked developer context.
 
 The worker polls the OpenContext API, processes jobs through resumable stages,
@@ -34,6 +35,23 @@ Analyze a local video without running the web app or database:
 opencontext analyze video.mp4 --out context.md --json context.json
 ```
 
+Still images use the same command and output contract:
+
+```bash
+opencontext analyze mockup.png --out context.md --json context.json
+```
+
+PDFs up to 30 pages use the same output contract and combine embedded text with
+rendered-page vision evidence:
+
+```bash
+opencontext analyze reference.pdf --out context.md --json context.json
+```
+
+The web upload flow can submit up to 10 images as one ordered image-set job with
+cross-image comparisons. CLI batch mode analyzes each file independently and
+keeps collision-safe per-file outputs.
+
 Use `--offline` to run the full extraction and export path with clearly labeled
 fixture transcription and vision output:
 
@@ -45,7 +63,7 @@ The CLI accepts `LOW`, `MEDIUM`, or `HIGH` via `--detail-level`, and provider
 overrides via `--transcription-provider`, `--vision-provider`, and
 `--text-provider`.
 
-Analyze every supported video in a directory:
+Analyze every supported file in a directory:
 
 ```bash
 opencontext analyze ./recordings --output-dir ./context --offline
@@ -133,9 +151,10 @@ the worker. Provider settings are read from the worker process environment.
   speech recognition or computer vision and should not be used to claim real
   analysis quality.
 
-The generated-video integration test is
-`tests/test_e2e_fixture.py`. It invokes real FFmpeg for probing, audio
-extraction, and frame extraction, while using fixture providers for inference.
+The generated-media integration tests in `tests/test_e2e_fixture.py` invoke
+real FFmpeg and PDFium for probing, audio and frame extraction, still-image
+conversion, image sets, and PDF page rendering, while using fixture providers
+for inference.
 
 ## Real OpenCode Go vision smoke test
 
@@ -148,9 +167,10 @@ export VISION_MODEL=glm-5.3-flash
 OPENCONTEXT_OPENCODE_E2E=1 pytest tests/test_opencode_vision_smoke.py -q
 ```
 
-The test verifies the model catalog accepts image input, generates a synthetic
-frame, and checks the normalized visual response. It is a setup smoke test, not
-evidence of model quality.
+The test verifies the model catalog accepts image input, analyzes a generated
+frame, and runs a synthetic checkout reference through the full image pipeline.
+It requires the model to recover at least two of the expected UI/OCR labels.
+This is a setup smoke test, not evidence of broad model quality.
 
 ## Real OpenCode Go audio smoke test
 
@@ -175,7 +195,9 @@ opencontext-mcp
 
 The stdio MCP server exposes:
 
-- `analyze_video` — analyze a local video and return an evidence-linked brief.
+- `analyze_media` — analyze a local video or image and return an evidence-linked
+  brief.
+- `analyze_video` and `analyze_image` — explicit compatibility entry points.
 - `implementation_brief` — convert an existing context JSON result into a brief.
 - `context_evidence` — return the bounded evidence ledger.
 

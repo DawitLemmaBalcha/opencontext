@@ -1,4 +1,4 @@
-"""MCP tools that let coding agents request video context and briefs."""
+"""MCP tools that let coding agents request visual context and briefs."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from oc_worker.config import Settings, load_local_env
 from oc_worker.models import DetailLevel
 
 INSTRUCTIONS = """\
-Use OpenContext when a user provides a video or screen recording that a
-text-only model cannot inspect. Analyze local media or read an existing
+Use OpenContext when a user provides a video, screen recording, or image that
+a text-only model cannot inspect. Analyze local media or read an existing
 context JSON, then request an implementation brief for the target repository.
 Treat inferred or uncertain evidence as a hypothesis and preserve evidence IDs.
 """
@@ -40,7 +40,7 @@ def build_server() -> MCPServer:
     server = MCPServer(
         "opencontext",
         title="OpenContext",
-        description="Evidence-linked video context for text-only coding agents.",
+        description="Evidence-linked visual context for text-only coding agents.",
         instructions=INSTRUCTIONS,
         version=package_version(),
     )
@@ -59,6 +59,45 @@ def build_server() -> MCPServer:
             task=task,
         )
 
+    def _analyze_local_media(
+        media_path: str,
+        repository_path: str | None = None,
+        task: str | None = None,
+        detail_level: str = "MEDIUM",
+        offline: bool = False,
+    ) -> str:
+        media = Path(media_path).expanduser().resolve()
+        if not media.is_file():
+            raise ValueError(f"Media path is not a file: {media}")
+        settings = _settings_for_analysis(offline)
+        _markdown, payload = analyze_file(
+            media,
+            settings,
+            detail_level=DetailLevel(detail_level.upper()),
+        )
+        return build_implementation_brief(
+            payload,
+            repository=repository_path,
+            task=task,
+        )
+
+    @server.tool()
+    def analyze_media(
+        media_path: str,
+        repository_path: str | None = None,
+        task: str | None = None,
+        detail_level: str = "MEDIUM",
+        offline: bool = False,
+    ) -> str:
+        """Analyze a local video or image and return an evidence-linked brief."""
+        return _analyze_local_media(
+            media_path,
+            repository_path=repository_path,
+            task=task,
+            detail_level=detail_level,
+            offline=offline,
+        )
+
     @server.tool()
     def analyze_video(
         video_path: str,
@@ -67,20 +106,30 @@ def build_server() -> MCPServer:
         detail_level: str = "MEDIUM",
         offline: bool = False,
     ) -> str:
-        """Analyze a local video and return an evidence-linked implementation brief."""
-        video = Path(video_path).expanduser().resolve()
-        if not video.is_file():
-            raise ValueError(f"Video path is not a file: {video}")
-        settings = _settings_for_analysis(offline)
-        _markdown, payload = analyze_file(
-            video,
-            settings,
-            detail_level=DetailLevel(detail_level.upper()),
-        )
-        return build_implementation_brief(
-            payload,
-            repository=repository_path,
+        """Analyze a local video and return an evidence-linked brief."""
+        return _analyze_local_media(
+            video_path,
+            repository_path=repository_path,
             task=task,
+            detail_level=detail_level,
+            offline=offline,
+        )
+
+    @server.tool()
+    def analyze_image(
+        image_path: str,
+        repository_path: str | None = None,
+        task: str | None = None,
+        detail_level: str = "MEDIUM",
+        offline: bool = False,
+    ) -> str:
+        """Analyze a local image and return an evidence-linked brief."""
+        return _analyze_local_media(
+            image_path,
+            repository_path=repository_path,
+            task=task,
+            detail_level=detail_level,
+            offline=offline,
         )
 
     @server.tool()

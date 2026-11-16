@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { FailureKindSchema, StageNameSchema, StageStatusSchema } from "./job.js";
+import {
+  FailureKindSchema,
+  SourceKindSchema,
+  StageNameSchema,
+  StageStatusSchema,
+} from "./job.js";
 import { MediaKindSchema } from "./media.js";
 
 /**
@@ -22,6 +27,21 @@ export const WorkerSourceInfoSchema = z.object({
   provider: z.enum(["local", "s3"]),
   sizeBytes: z.number().int().nonnegative(),
   filename: z.string(),
+  kind: SourceKindSchema,
+  assets: z
+    .array(
+      z.object({
+        uri: z.string(),
+        provider: z.enum(["local", "s3"]),
+        sizeBytes: z.number().int().nonnegative(),
+        filename: z.string(),
+        kind: SourceKindSchema,
+        ext: z.string(),
+        mime: z.string(),
+        order: z.number().int().nonnegative(),
+      }),
+    )
+    .optional(),
 });
 
 export type WorkerSourceInfo = z.infer<typeof WorkerSourceInfoSchema>;

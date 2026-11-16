@@ -1,4 +1,10 @@
-export { createJob, type CreateJobInput } from "./createJob";
+export {
+  createJob,
+  createJobSources,
+  type CreateJobInput,
+  type CreateJobSource,
+  type CreateJobSourcesInput,
+} from "./createJob";
 export { getJob, getOwnedJobRow, type GetJobResult } from "./getJob";
 export { listJobs, LIST_LIMIT } from "./listJobs";
 export { retryJob, type RetryResult } from "./retryJob";

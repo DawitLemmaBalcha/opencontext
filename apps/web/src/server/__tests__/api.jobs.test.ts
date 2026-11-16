@@ -13,17 +13,24 @@ import { POST as uploadsPost } from "@/app/api/uploads/route";
 import { DELETE as uploadDelete } from "@/app/api/uploads/[id]/route";
 import { PUT as uploadBodyPut } from "@/app/api/uploads/[id]/body/route";
 import { POST as uploadCompletePost } from "@/app/api/uploads/[id]/complete/route";
+import { POST as uploadBatchCompletePost } from "@/app/api/uploads/batch/complete/route";
 import {
   GET as apiJobGet,
   DELETE as apiJobDelete,
 } from "@/app/api/jobs/[id]/route";
 import { POST as apiJobRetry } from "@/app/api/jobs/[id]/retry/route";
 import { GET as apiJobExport } from "@/app/api/jobs/[id]/export/route";
+import { GET as apiJobSource } from "@/app/api/jobs/[id]/source/route";
 import { prisma } from "@/server/db/prisma";
 import { storage } from "@/server/storage";
 import { initialStageStates } from "@/server/jobs";
 import { createUser, resetDatabase, resetStorage } from "./helpers";
 import { resetRateLimits } from "@/server/security/rate-limit";
+
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 function asUser(userId: string): void {
   authMock.auth.mockResolvedValue({ user: { id: userId, name: "Test User" } });
@@ -408,6 +415,174 @@ describe("direct upload + list", () => {
     );
     expect(response.status).toBe(400);
     expect((await response.json()).error.message).toContain("do not match");
+  });
+
+  it("uploads an image and serves its owner-only preview", async () => {
+    const user = await createUser();
+    asUser(user.id);
+
+    const intentResponse = await uploadsPost(
+      new Request("http://test.local/api/uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: "checkout-mockup.png",
+          sizeBytes: TINY_PNG.length,
+          mime: "image/png",
+        }),
+      }),
+    );
+    const intent = (await intentResponse.json()) as {
+      uploadId: string;
+      url: string;
+      headers: Record<string, string>;
+    };
+    await uploadBodyPut(
+      new Request(`http://test.local${intent.url}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": intent.headers["Content-Type"],
+          "Content-Length": String(TINY_PNG.length),
+        },
+        body: TINY_PNG,
+      }),
+      { params: Promise.resolve({ id: intent.uploadId }) },
+    );
+    const completeResponse = await uploadCompletePost(
+      new Request(`http://test.local/api/uploads/${intent.uploadId}/complete`, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: intent.uploadId }) },
+    );
+    expect(completeResponse.status).toBe(201);
+    const job = (await completeResponse.json()) as { id: string };
+
+    const sourceResponse = await apiJobSource(
+      new Request(jobUrl(job.id, "/source")),
+      { params: Promise.resolve({ id: job.id }) },
+    );
+    expect(sourceResponse.status).toBe(200);
+    expect(sourceResponse.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await sourceResponse.arrayBuffer())).toEqual(
+      new Uint8Array(TINY_PNG),
+    );
+    const missingAssetResponse = await apiJobSource(
+      new Request(jobUrl(job.id, "/source?asset=1")),
+      { params: Promise.resolve({ id: job.id }) },
+    );
+    expect(missingAssetResponse.status).toBe(404);
+  });
+
+  it("uploads a PDF and serves its owner-only preview", async () => {
+    const user = await createUser();
+    asUser(user.id);
+    const pdf = Buffer.from("%PDF-1.4\n");
+
+    const intentResponse = await uploadsPost(
+      new Request("http://test.local/api/uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: "reference.pdf",
+          sizeBytes: pdf.length,
+          mime: "application/pdf",
+        }),
+      }),
+    );
+    const intent = (await intentResponse.json()) as {
+      uploadId: string;
+      url: string;
+      headers: Record<string, string>;
+    };
+    await uploadBodyPut(
+      new Request(`http://test.local${intent.url}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": intent.headers["Content-Type"],
+          "Content-Length": String(pdf.length),
+        },
+        body: pdf,
+      }),
+      { params: Promise.resolve({ id: intent.uploadId }) },
+    );
+    const completeResponse = await uploadCompletePost(
+      new Request(`http://test.local/api/uploads/${intent.uploadId}/complete`, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: intent.uploadId }) },
+    );
+    expect(completeResponse.status).toBe(201);
+    const summary = (await completeResponse.json()) as { id: string };
+    const detailResponse = await apiJobGet(
+      new Request(jobUrl(summary.id)),
+      { params: Promise.resolve({ id: summary.id }) },
+    );
+    const detail = await detailResponse.json();
+    expect(detail.source.kind).toBe("pdf");
+
+    const sourceResponse = await apiJobSource(
+      new Request(jobUrl(summary.id, "/source")),
+      { params: Promise.resolve({ id: summary.id }) },
+    );
+    expect(sourceResponse.status).toBe(200);
+    expect(sourceResponse.headers.get("content-type")).toBe("application/pdf");
+  });
+
+  it("commits multiple images as one ordered image-set job", async () => {
+    const user = await createUser();
+    asUser(user.id);
+    const uploadIds: string[] = [];
+    for (const filename of ["first.png", "second.png"]) {
+      const intentResponse = await uploadsPost(
+        new Request("http://test.local/api/uploads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename,
+            sizeBytes: TINY_PNG.length,
+            mime: "image/png",
+          }),
+        }),
+      );
+      const intent = (await intentResponse.json()) as {
+        uploadId: string;
+        url: string;
+        headers: Record<string, string>;
+      };
+      await uploadBodyPut(
+        new Request(`http://test.local${intent.url}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": intent.headers["Content-Type"],
+            "Content-Length": String(TINY_PNG.length),
+          },
+          body: TINY_PNG,
+        }),
+        { params: Promise.resolve({ id: intent.uploadId }) },
+      );
+      uploadIds.push(intent.uploadId);
+    }
+
+    const response = await uploadBatchCompletePost(
+      new Request("http://test.local/api/uploads/batch/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadIds, detailLevel: "HIGH" }),
+      }),
+    );
+    expect(response.status).toBe(201);
+    const summary = (await response.json()) as { id: string };
+    const detailResponse = await apiJobGet(
+      new Request(jobUrl(summary.id)),
+      { params: Promise.resolve({ id: summary.id }) },
+    );
+    const detail = await detailResponse.json();
+    expect(detail.source.kind).toBe("image");
+    expect(detail.source.assets).toHaveLength(2);
+    expect(detail.source.assetCount).toBe(2);
+    expect(await prisma.media.count({
+      where: { jobId: summary.id, kind: "SOURCE" },
+    })).toBe(2);
   });
 
   it("GET lists only the caller's jobs, newest first", async () => {

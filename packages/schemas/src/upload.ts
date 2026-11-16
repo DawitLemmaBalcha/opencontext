@@ -27,3 +27,18 @@ export const UploadIntentResponseSchema = z.object({
 });
 
 export type UploadIntentResponse = z.infer<typeof UploadIntentResponseSchema>;
+
+/** Complete several image intents as one ordered image-set job. */
+export const CompleteUploadBatchRequestSchema = z
+  .object({
+    uploadIds: z
+      .array(z.string().min(1))
+      .min(2)
+      .max(UPLOAD_LIMITS.maxImageCount),
+    detailLevel: DetailLevelSchema.default("MEDIUM"),
+  })
+  .strict();
+
+export type CompleteUploadBatchRequest = z.infer<
+  typeof CompleteUploadBatchRequestSchema
+>;

@@ -1,6 +1,8 @@
 import type { Job } from "@prisma/client";
+import type { Media } from "@prisma/client";
 import {
   STAGE_NAMES,
+  sourceKindForExtension,
   type JobDetail,
   type JobSummary,
   type StageState,
@@ -8,8 +10,9 @@ import {
 import { computeExpiresAt, retentionNoteFor } from "./retention";
 
 /** Job → full API payload (GET /api/jobs/[id], worker claim payloads). */
-export function jobToDetail(job: Job): JobDetail {
+export function jobToDetail(job: Job, sourceMedia: Media[] = []): JobDetail {
   const stageStates = (job.stageStates as StageState[]) ?? [];
+  const sourceExt = job.sourceExt ?? "";
   const retryAllowed =
     job.status === "PARTIAL" ||
     (job.status === "FAILED" && job.failureKind === "TRANSIENT");
@@ -29,12 +32,38 @@ export function jobToDetail(job: Job): JobDetail {
       ? {
           key: job.sourceKey,
           sizeBytes: job.sourceSize ?? 0,
-          ext: job.sourceExt ?? "",
+          ext: sourceExt,
+          kind: sourceKindForExtension(sourceExt),
+          ...(sourceMedia.length > 0
+            ? {
+                assets: sourceMedia
+                  .filter((media) => media.kind === "SOURCE")
+                  .sort(
+                    (left, right) =>
+                      (left.timestampSec ?? 0) - (right.timestampSec ?? 0),
+                  )
+                  .map((media) => {
+                    const dot = media.key.lastIndexOf(".");
+                    const ext =
+                      dot >= 0 ? media.key.slice(dot + 1).toLowerCase() : sourceExt;
+                    return {
+                      key: media.key,
+                      ext,
+                      mime: media.mime ?? "application/octet-stream",
+                      sizeBytes: media.sizeBytes,
+                      kind: sourceKindForExtension(ext),
+                      order: Math.max(0, Math.round(media.timestampSec ?? 0)),
+                    };
+                  }),
+              }
+            : {}),
           ...(job.durationSec !== null ? { durationSec: job.durationSec } : {}),
           ...(job.width !== null ? { width: job.width } : {}),
           ...(job.height !== null ? { height: job.height } : {}),
           ...(job.audioPresent !== null ? { audioPresent: job.audioPresent } : {}),
           ...(job.frameCount !== null ? { frameCount: job.frameCount } : {}),
+          ...(job.assetCount !== null ? { assetCount: job.assetCount } : {}),
+          ...(job.pageCount !== null ? { pageCount: job.pageCount } : {}),
         }
       : null,
     createdAt: job.createdAt.toISOString(),

@@ -37,19 +37,61 @@ export type DetailLevel = (typeof DETAIL_LEVELS)[number];
 
 export const DetailLevelSchema = z.enum(DETAIL_LEVELS);
 
+/** Source media accepted by the analysis pipeline. */
+export const SOURCE_KINDS = ["video", "image", "pdf"] as const;
+
+export type SourceKind = (typeof SOURCE_KINDS)[number];
+
+export const SourceKindSchema = z.enum(SOURCE_KINDS);
+
 /** Upload acceptance limits for media files. */
 export const UPLOAD_LIMITS = {
   maxBytes: 500 * 1024 * 1024,
+  maxImageBytes: 25 * 1024 * 1024,
+  maxPdfBytes: 50 * 1024 * 1024,
+  maxImageCount: 10,
+  maxImagePixels: 40_000_000,
+  maxPdfPages: 30,
   maxDurationSec: 1800,
-  allowedExtensions: [".mp4", ".mov", ".webm", ".mkv"],
+  allowedExtensions: [
+    ".mp4",
+    ".mov",
+    ".webm",
+    ".mkv",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".pdf",
+  ],
   allowedMimeTypes: [
     "video/mp4",
     "video/quicktime",
     "video/webm",
     "video/x-matroska",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "application/pdf",
   ],
+  imageExtensions: [".png", ".jpg", ".jpeg", ".webp"],
   intentTtlSec: 15 * 60,
 } as const;
+
+/** Infer whether a stored source extension represents a still image. */
+export function sourceKindForExtension(extension: string): SourceKind {
+  const normalized = extension.startsWith(".")
+    ? extension.toLowerCase()
+    : `.${extension.toLowerCase()}`;
+  return (UPLOAD_LIMITS.imageExtensions as readonly string[]).includes(
+    normalized,
+  )
+    ? "image"
+    : normalized === ".pdf"
+      ? "pdf"
+      : "video";
+}
 
 /** Data retention windows (days). */
 export const RETENTION = {
@@ -135,6 +177,8 @@ export const SourceMetaSchema = z.object({
   height: z.number().int().positive().optional(),
   audioPresent: z.boolean().optional(),
   frameCount: z.number().int().nonnegative().optional(),
+  assetCount: z.number().int().positive().optional(),
+  pageCount: z.number().int().positive().optional(),
 });
 
 export type SourceMeta = z.infer<typeof SourceMetaSchema>;

@@ -10,7 +10,8 @@ Nothing in this file is a commitment for the MVP. Items move into the behavior f
 4. **Re-run a job at a different detail level** — the MVP requires a new job.
 5. **Download original video** — the MVP assumes the user has the source.
 6. **URL ingestion** (e.g., YouTube) — explicitly optional per the master prompt.
-7. **Image, PDF, and audio-only analysis** — MVP handles video only.
+7. **Audio-only analysis** — the current pipeline handles video, still images,
+   ordered image sets, and PDFs, but not standalone audio files.
 8. **Scene-change detection** replacing fixed frame sampling.
 9. **Additional agent-specific integrations** beyond the implemented local MCP
    server.

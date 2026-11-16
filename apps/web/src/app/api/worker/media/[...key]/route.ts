@@ -11,6 +11,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   png: "image/png",
+  pdf: "application/pdf",
   aac: "audio/aac",
   m4a: "audio/mp4",
   wav: "audio/wav",

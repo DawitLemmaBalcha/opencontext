@@ -5,6 +5,16 @@ All notable changes are documented here. The project follows
 
 ## Unreleased
 
+- Added PNG, JPEG, and WebP image inputs, including ordered sets of up to 10
+  images. Upload completion validates each object before creating one job, and
+  the worker adds cross-image text and UI changes to the Markdown and JSON
+  output.
+- Added PDF ingestion up to 50 MB and 30 pages. PDF pages are rendered in order,
+  embedded text becomes OCR evidence, and the result viewer includes an
+  authenticated PDF preview.
+- Hardened still-image ingestion with signature checks, Sharp metadata
+  validation, a 40-megapixel ceiling, EXIF orientation handling, transparency
+  flattening, and metadata stripping before vision analysis.
 - Verified a production upload-to-export job on Vercel, Neon PostgreSQL, S3 via
   Vercel OIDC, and the scheduled GitHub Actions worker.
 - Fixed S3 artifact uploads to use a Node readable stream and to calculate only

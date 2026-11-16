@@ -24,8 +24,9 @@ python -m pip install "workers/processor[agent]"
 opencontext-mcp
 ```
 
-The MCP server exposes `analyze_video`, `implementation_brief`, and
-`context_evidence`. See [agent-integration.md](agent-integration.md).
+The MCP server exposes `analyze_media`, `analyze_video`, `analyze_image`,
+`implementation_brief`, and `context_evidence`. See
+[agent-integration.md](agent-integration.md).
 
 ## npm schemas
 

@@ -111,6 +111,8 @@ def _build_json_payload(
     timeline: list[dict[str, Any]],
     generated_at: str,
     audio_present: bool | None = None,
+    source_kind: str = "video",
+    source_assets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     ui_hierarchy: list[str] = []
     interactions: list[str] = []
@@ -119,6 +121,7 @@ def _build_json_payload(
     implementation_observations: list[dict[str, Any]] = []
     visual_findings: list[dict[str, Any]] = []
     evidence_drafts: list[dict[str, Any]] = []
+    cross_findings: list[dict[str, Any]] = []
     evidence_order = 0
 
     def add_evidence(
@@ -169,14 +172,15 @@ def _build_json_payload(
         ):
             if claim:
                 finding_index = len(visual_findings)
-                visual_findings.append(
-                    {
-                        "field": field_name,
-                        "text": claim,
-                        "timestampSec": obs.timestampSec,
-                        "certainty": obs.certainty.value,
-                    }
-                )
+                finding = {
+                    "field": field_name,
+                    "text": claim,
+                    "timestampSec": obs.timestampSec,
+                    "certainty": obs.certainty.value,
+                }
+                if obs.frameId:
+                    finding["frameId"] = obs.frameId
+                visual_findings.append(finding)
                 add_evidence(
                     kind="VISUAL",
                     collection="visualFindings",
@@ -248,11 +252,62 @@ def _build_json_payload(
                 timestamp_sec=obs.timestampSec,
                 certainty=obs.certainty.value,
             )
+
+    if source_kind in ("image", "pdf"):
+        ordered_observations = sorted(
+            observations,
+            key=lambda item: (item.frameId or "", item.timestampSec),
+        )
+        previous: VisualObservation | None = None
+        for current in ordered_observations:
+            if previous is not None:
+                previous_asset = previous.frameId or "source"
+                current_asset = current.frameId or "source"
+                before_text = set(previous.visibleText)
+                after_text = set(current.visibleText)
+                before_ui = set(previous.uiElements)
+                after_ui = set(current.uiElements)
+                comparisons = (
+                    ("visible text added", after_text - before_text),
+                    ("visible text removed", before_text - after_text),
+                    ("UI elements added", after_ui - before_ui),
+                    ("UI elements removed", before_ui - after_ui),
+                )
+                for label, values in comparisons:
+                    if not values:
+                        continue
+                    changed_values = ", ".join(sorted(values))
+                    text = (
+                        f"{label} from {previous_asset} to "
+                        f"{current_asset}: {changed_values}"
+                    )
+                    index = len(cross_findings)
+                    cross_findings.append(
+                        {
+                            "from": previous_asset,
+                            "to": current_asset,
+                            "change": text,
+                        }
+                    )
+                    add_evidence(
+                        kind="VISUAL",
+                        collection="crossImageFindings",
+                        index=index,
+                        text=text,
+                        timestamp_sec=0.0,
+                        certainty="OBSERVED",
+                    )
+            previous = current
     for item in ocr:
         index = len(visible_text)
-        visible_text.append(
-            {"text": item.text, "confidence": item.confidence, "timestampSec": item.timestampSec}
-        )
+        ocr_text = {
+            "text": item.text,
+            "confidence": item.confidence,
+            "timestampSec": item.timestampSec,
+        }
+        if item.frameId:
+            ocr_text["frameId"] = item.frameId
+        visible_text.append(ocr_text)
         add_evidence(
             kind="OCR",
             collection="visibleText",
@@ -279,9 +334,11 @@ def _build_json_payload(
         "evidenceVersion": 1,
         "source": {
             "name": source_name,
+            "kind": source_kind,
             "durationSec": duration_sec,
             "detailLevel": detail_level.value,
         },
+        "sourceAssets": source_assets or [],
         "generatedAt": generated_at,
         "transcript": [segment.model_dump() for segment in segments],
         "timeline": timeline,
@@ -291,6 +348,7 @@ def _build_json_payload(
         "stateTransitions": state_transitions,
         "implementationObservations": implementation_observations,
         "visualFindings": visual_findings,
+        "crossImageFindings": cross_findings,
         "evidence": evidence,
     }
     if audio_present is not None:
@@ -313,7 +371,13 @@ def template_markdown(payload: dict[str, Any]) -> str:
         f"# Developer Context: {name}",
         "",
         f"- **Source:** {name}",
-        f"- **Duration:** {format_timestamp(source.get('durationSec') or 0)}",
+        (
+            "- **Source type:** Still image"
+            if source.get("kind") == "image"
+            else "- **Source type:** PDF"
+            if source.get("kind") == "pdf"
+            else f"- **Duration:** {format_timestamp(source.get('durationSec') or 0)}"
+        ),
         f"- **Generated:** {payload.get('generatedAt')}",
         f"- **Detail level:** {source.get('detailLevel')}",
         "",
@@ -332,6 +396,31 @@ def template_markdown(payload: dict[str, Any]) -> str:
         if summary:
             line += f" — {summary}"
         lines.append(line)
+    if source.get("kind") in ("image", "pdf"):
+        lines.extend(
+            [
+                "",
+                "## Source Pages" if source.get("kind") == "pdf" else "## Source Images",
+                "",
+            ]
+        )
+        source_assets = payload.get("sourceAssets") or []
+        if not source_assets:
+            lines.append("_No source page details were recorded._")
+        for index, asset in enumerate(source_assets, start=1):
+            lines.append(
+                f"- {index}. {asset.get('name') or f'Source {index}'}"
+            )
+        lines.extend(["", "## Cross-source Changes", ""])
+        cross_findings = payload.get("crossImageFindings") or []
+        if not cross_findings:
+            lines.append("_No textual or UI differences were detected between sources._")
+        for index, finding in enumerate(cross_findings):
+            text = str(finding.get("change") or "")
+            lines.append(
+                f"- {text}"
+                f"{_citation(evidence_by_source, 'crossImageFindings', index, text)}"
+            )
     lines.extend(["", "## Visual Findings", ""])
     visual_findings = payload.get("visualFindings") or []
     if not visual_findings:
@@ -348,7 +437,13 @@ def template_markdown(payload: dict[str, Any]) -> str:
     transcript = payload.get("transcript") or []
     if not transcript:
         if payload.get("audioPresent") is False:
-            lines.append("_No audio track detected — transcription was skipped._")
+            lines.append(
+                "_Still image has no audio — transcription was skipped._"
+                if source.get("kind") == "image"
+                else "_PDF source has no audio — transcription was skipped._"
+                if source.get("kind") == "pdf"
+                else "_No audio track detected — transcription was skipped._"
+            )
         else:
             lines.append("_Audio track contained no speech._")
     for index, segment in enumerate(transcript):
@@ -454,6 +549,8 @@ def build_context(
     ocr: list[OCRObservation],
     timeline: list[dict[str, Any]],
     audio_present: bool | None = None,
+    source_kind: str = "video",
+    source_assets: list[dict[str, Any]] | None = None,
     text_provider: TextProvider | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Build the developer context; returns (markdown, json payload)."""
@@ -469,6 +566,8 @@ def build_context(
         timeline=timeline,
         generated_at=generated_at,
         audio_present=audio_present,
+        source_kind=source_kind,
+        source_assets=source_assets,
     )
     markdown = template_markdown(payload)
     if text_provider is not None:

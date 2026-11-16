@@ -7,13 +7,13 @@ Status: IMPLEMENTED — SEE docs/status.md FOR VERIFICATION SCOPE
 - **Copy (exact):**
   - Headline: **"Give text-only AI agents eyes and ears."**
   - Subtitle: **"OpenContext converts videos, screen recordings, and visual references into structured context that text-only LLMs and coding agents can understand."**
-- **Primary CTA:** "Analyze a Video" → sign-in if needed, then the new-job page
+- **Primary CTA:** "Analyze Media" → sign-in if needed, then the new-job page
 - **Secondary CTA:** "View on GitHub" → the project repository
 - **Acceptance:** hero renders with exact copy; both CTAs go where stated
 
 ## B2 — Pipeline visual
 
-- The pipeline is shown step by step: VIDEO → AUDIO + FRAMES → TRANSCRIPTION + VISION → STRUCTURED CONTEXT → TEXT-ONLY AI
+- The pipeline is shown step by step: VISUAL MEDIA → AUDIO + FRAMES → TRANSCRIPTION + VISION → STRUCTURED CONTEXT → TEXT-ONLY AI
 - A developer example shows a realistic video becoming context
 
 ## B3 — Sections

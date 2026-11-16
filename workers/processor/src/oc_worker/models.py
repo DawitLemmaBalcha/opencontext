@@ -108,6 +108,7 @@ class VisualObservation(BaseModel):
     """
 
     timestampSec: float
+    frameId: str | None = None
     certainty: Certainty = Certainty.OBSERVED
     sceneTitle: str | None = None
     visualDescription: str | None = None
@@ -164,6 +165,7 @@ class VisualObservation(BaseModel):
 
 class OCRObservation(BaseModel):
     timestampSec: float
+    frameId: str | None = None
     text: str
     confidence: float | None = None
     provider: str | None = None

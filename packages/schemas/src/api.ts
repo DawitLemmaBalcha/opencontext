@@ -3,6 +3,7 @@ import {
   DetailLevelSchema,
   FailureKindSchema,
   JobStatusSchema,
+  SourceKindSchema,
   SourceMetaSchema,
   StageNameSchema,
   StageStatesSchema,
@@ -50,6 +51,19 @@ export const JobDetailSchema = z.object({
       key: z.string(),
       sizeBytes: z.number().int().nonnegative(),
       ext: z.string(),
+      kind: SourceKindSchema,
+      assets: z
+        .array(
+          z.object({
+            key: z.string(),
+            ext: z.string(),
+            mime: z.string(),
+            sizeBytes: z.number().int().nonnegative(),
+            kind: SourceKindSchema,
+            order: z.number().int().nonnegative(),
+          }),
+        )
+        .optional(),
     })
     .and(SourceMetaSchema)
     .nullable(),
