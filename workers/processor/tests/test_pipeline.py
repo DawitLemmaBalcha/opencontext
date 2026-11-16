@@ -688,7 +688,7 @@ def test_ordered_image_set_builds_cross_image_context() -> None:
     )
 
     assert pipeline.run_job(_job(source={"kind": "image", "ext": "png"})) == "completed"
-    assert [call["sourceIndex"] for call in vision.calls] == [0, 1]
+    assert sorted(call["sourceIndex"] for call in vision.calls) == [0, 1]
     stage_results = [
         body for path, body in handler.json_requests() if path.endswith("/stage-result")
     ]

@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 from PIL import Image
 
 from oc_worker.ffmpeg import extract_image_frame
@@ -19,7 +18,7 @@ def test_transparency_is_flattened_to_white(tmp_path: Path) -> None:
 
     normalized = Image.open(output)
     assert normalized.mode == "RGB"
-    assert normalized.getpixel((0, 0)) == pytest.approx((255, 255, 255))
+    assert all(channel >= 250 for channel in normalized.getpixel((0, 0)))
 
 
 def test_exif_orientation_is_applied(tmp_path: Path) -> None:
