@@ -10,8 +10,6 @@ This roadmap lists work that is not complete. It is not a release promise.
 
 - Move the worker from a five-minute GitHub Actions schedule to a long-running
   container host.
-- Add an audio-backed end-to-end fixture that exercises real speech
-  transcription in CI.
 - Add CORS for any custom production domain.
 
 ## Later

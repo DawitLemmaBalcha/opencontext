@@ -5,6 +5,12 @@ All notable changes are documented here. The project follows
 
 ## Unreleased
 
+- Clamped speech-model segment bounds to the probed source duration, so a
+  trailing Faster Whisper segment can no longer create evidence timestamps past
+  the end of the recording.
+- Added an audio-backed worker end-to-end test that transcribes the committed
+  Harvard recording with real Faster Whisper, checks transcript WER/CER, and
+  validates the evidence ledger and its timestamp bounds in CI.
 - Verified a production upload-to-export job on Vercel, Neon PostgreSQL, S3 via
   Vercel OIDC, and the scheduled GitHub Actions worker.
 - Fixed S3 artifact uploads to use a Node readable stream and to calculate only
