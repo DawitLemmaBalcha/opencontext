@@ -94,6 +94,7 @@ def test_json_payload_structure() -> None:
     assert payload["formatVersion"] == 2
     assert payload["source"] == {
         "name": "demo.mp4",
+        "kind": "video",
         "durationSec": 65.0,
         "detailLevel": "MEDIUM",
     }

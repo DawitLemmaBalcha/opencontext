@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { prisma } from "@/server/db/prisma";
 import { storage } from "@/server/storage";
-import { createJob } from "@/server/jobs";
+import { createJob, jobToDetail } from "@/server/jobs";
 import { createQueuedJob, createUser, resetDatabase, resetStorage, TEST_BYTES } from "./helpers";
 
 beforeEach(async () => {
@@ -69,6 +69,31 @@ describe("createJob (upload commit sequence, blueprint §3 B3)", () => {
 
     expect(await prisma.job.count()).toBe(0);
     expect(await prisma.media.count()).toBe(0);
+  });
+
+  it("creates an image-backed job with a derived image source kind", async () => {
+    const user = await createUser();
+    const tempKey = "incoming/image-test";
+    await storage.put(tempKey, new Blob([TEST_BYTES]).stream(), {
+      sizeBytes: TEST_BYTES.length,
+    });
+
+    const job = await createJob({
+      userId: user.id,
+      displayName: "checkout-mockup.png",
+      detailLevel: "MEDIUM",
+      sourceExt: "png",
+      sourceSize: TEST_BYTES.length,
+      sourceMime: "image/png",
+      tempKey,
+    });
+    const detail = jobToDetail(job);
+
+    expect(job.sourceKey).toBe(`jobs/${job.id}/source.png`);
+    expect(detail.source).toMatchObject({
+      ext: "png",
+      kind: "image",
+    });
   });
 
   it("each upload is an independent job (upload.md B5)", async () => {

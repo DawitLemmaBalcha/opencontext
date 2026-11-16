@@ -27,19 +27,30 @@ from oc_worker.agent import build_implementation_brief, load_context_payload
 from oc_worker.config import Settings, load_local_env
 from oc_worker.errors import PermanentFailure, TransientFailure
 from oc_worker.evaluation import evaluate_context
-from oc_worker.ffmpeg import extract_audio, extract_frames, probe
+from oc_worker.ffmpeg import extract_audio, extract_frames, extract_image_frame, probe
 from oc_worker.models import DetailLevel, OCRObservation, VisualObservation
-from oc_worker.pipeline import MAX_DURATION_SECONDS, NOT_A_VIDEO_MESSAGE, TOO_LONG_MESSAGE
+from oc_worker.pdf import extract_pdf_pages
+from oc_worker.pipeline import (
+    MAX_DURATION_SECONDS,
+    NOT_A_VIDEO_MESSAGE,
+    NOT_AN_IMAGE_MESSAGE,
+    TOO_LONG_MESSAGE,
+)
 from oc_worker.providers import build_ocr, build_text, build_transcription, build_vision
 from oc_worker.replay import replay_context
 
 log = logging.getLogger("oc_worker.cli")
 
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".mkv"}
+SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+SUPPORTED_PDF_EXTENSIONS = {".pdf"}
+SUPPORTED_EXTENSIONS = (
+    SUPPORTED_VIDEO_EXTENSIONS | SUPPORTED_IMAGE_EXTENSIONS | SUPPORTED_PDF_EXTENSIONS
+)
 
 
 def _expand_inputs(inputs: list[Path]) -> list[Path]:
-    """Expand directories into a stable list of supported video files."""
+    """Expand directories into a stable list of supported media files."""
     videos: list[Path] = []
     for item in inputs:
         if item.is_dir():
@@ -47,7 +58,7 @@ def _expand_inputs(inputs: list[Path]) -> list[Path]:
                 candidate
                 for candidate in sorted(item.rglob("*"))
                 if candidate.is_file()
-                and candidate.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS
+                and candidate.suffix.lower() in SUPPORTED_EXTENSIONS
             )
         else:
             # Preserve missing paths so each one becomes a reported failure.
@@ -375,21 +386,38 @@ def run_doctor(
 
 
 def analyze_file(
-    video: Path,
+    source: Path,
     settings: Settings,
     *,
     detail_level: DetailLevel = DetailLevel.MEDIUM,
 ) -> tuple[str, dict[str, Any]]:
-    """Analyze one local video and return Markdown plus the JSON payload."""
-    if not video.is_file():
-        raise PermanentFailure(f"Video not found: {video}")
+    """Analyze one local video, image set, or PDF and return Markdown/JSON."""
+    if not source.is_file():
+        raise PermanentFailure(f"Media not found: {source}")
 
-    probed = probe(str(video), settings.ffmpeg_path or None)
-    if not probed.get("video_present"):
-        raise PermanentFailure(NOT_A_VIDEO_MESSAGE)
-    duration = probed.get("duration")
-    if duration is None or float(duration) > MAX_DURATION_SECONDS:
-        raise PermanentFailure(TOO_LONG_MESSAGE)
+    source_kind = (
+        "image"
+        if source.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
+        else "pdf"
+        if source.suffix.lower() in SUPPORTED_PDF_EXTENSIONS
+        else "video"
+    )
+    probed: dict[str, Any] = {}
+    duration = 0.0
+    if source_kind == "video":
+        probed = probe(str(source), settings.ffmpeg_path or None)
+        if not probed.get("video_present"):
+            raise PermanentFailure(NOT_A_VIDEO_MESSAGE)
+        duration_value = probed.get("duration")
+        if duration_value is None or float(duration_value) > MAX_DURATION_SECONDS:
+            raise PermanentFailure(TOO_LONG_MESSAGE)
+        duration = float(duration_value)
+    elif source_kind == "image":
+        probed = probe(str(source), settings.ffmpeg_path or None)
+        if not probed.get("video_present"):
+            raise PermanentFailure(NOT_AN_IMAGE_MESSAGE)
+    else:
+        probed = {"video_present": True, "audio_present": False}
 
     transcription = build_transcription(settings)
     vision = build_vision(settings)
@@ -406,8 +434,8 @@ def analyze_file(
         workdir = Path(tmp)
         audio_path = workdir / "audio.wav"
         segments = []
-        if probed.get("audio_present"):
-            extract_audio(str(video), str(audio_path), settings.ffmpeg_path or None)
+        if source_kind == "video" and probed.get("audio_present"):
+            extract_audio(str(source), str(audio_path), settings.ffmpeg_path or None)
             if transcription is None:
                 raise PermanentFailure(
                     "Audio is present but no transcription provider is configured "
@@ -415,37 +443,87 @@ def analyze_file(
                 )
             segments = transcription.transcribe(str(audio_path))
 
-        frames = extract_frames(
-            str(video),
-            workdir / "frames",
-            ffmpeg_path=settings.ffmpeg_path or None,
-        )
+        if source_kind == "image":
+            frames = [
+                {
+                    **extract_image_frame(
+                        str(source),
+                        workdir / "frames" / "frame_000001.jpg",
+                        ffmpeg_path=settings.ffmpeg_path or None,
+                    ),
+                    "sourceKind": "image",
+                    "sourceName": source.name,
+                    "frameId": "image-01",
+                }
+            ]
+        elif source_kind == "pdf":
+            frames = [
+                {
+                    "timestamp": 0.0,
+                    "path": page["path"],
+                    "sourceKind": "pdf",
+                    "sourceName": f"PDF page {page['pageNumber']}",
+                    "frameId": f"pdf-page-{int(page['pageNumber']):02d}",
+                    "embeddedText": page.get("text") or "",
+                }
+                for page in extract_pdf_pages(source, workdir / "pages")
+            ]
+        else:
+            frames = extract_frames(
+                str(source),
+                workdir / "frames",
+                ffmpeg_path=settings.ffmpeg_path or None,
+            )
+            for frame in frames:
+                frame.update(
+                    {
+                        "sourceKind": "video",
+                        "sourceName": source.name,
+                        "frameId": None,
+                    }
+                )
         observations = []
         ocr = []
         for frame in frames:
             timestamp = float(frame["timestamp"])
-            if not aggregation.frame_selected(timestamp, detail_level):
+            if (
+                frame.get("sourceKind") == "video"
+                and not aggregation.frame_selected(timestamp, detail_level)
+            ):
                 continue
             raw = vision.analyze(
                 Path(frame["path"]).read_bytes(),
                 {
                     "timestampSec": timestamp,
                     "detailLevel": detail_level.value,
-                    "sourceName": video.name,
+                    "sourceName": frame.get("sourceName") or source.name,
                     "durationSec": duration,
+                    "sourceKind": source_kind,
                 },
             )
             aggregation.mark_interaction_certainty(raw)
             raw["timestampSec"] = timestamp
+            raw["frameId"] = frame.get("frameId")
             raw["provider"] = vision.name
             observation = VisualObservation.model_validate(raw)
             observations.append(observation)
             if ocr_provider is None:
+                for line in str(frame.get("embeddedText") or "").splitlines():
+                    if line.strip():
+                        ocr.append(
+                            OCRObservation(
+                                timestampSec=timestamp,
+                                frameId=frame.get("frameId"),
+                                text=line.strip(),
+                                provider="pdf_text",
+                            )
+                        )
                 for text_item in observation.visibleText:
                     if text_item.strip():
                         ocr.append(
                             OCRObservation(
                                 timestampSec=timestamp,
+                                frameId=frame.get("frameId"),
                                 text=text_item.strip(),
                                 provider=vision.name,
                             )
@@ -455,7 +533,8 @@ def analyze_file(
                     Path(frame["path"]).read_bytes(),
                     {
                         "timestampSec": timestamp,
-                        "sourceName": video.name,
+                        "sourceName": frame.get("sourceName") or source.name,
+                        "sourceKind": source_kind,
                     },
                 )
                 for item in recognized:
@@ -465,6 +544,7 @@ def analyze_file(
                     ocr.append(
                         OCRObservation(
                             timestampSec=timestamp,
+                            frameId=frame.get("frameId"),
                             text=text_value,
                             confidence=item.get("confidence"),
                             provider=ocr_provider.name,
@@ -473,13 +553,23 @@ def analyze_file(
 
         timeline = aggregation.build_timeline(observations, float(duration))
         markdown, payload = context.build_context(
-            source_name=video.name,
+            source_name=source.name,
             duration_sec=float(duration),
             detail_level=detail_level,
             segments=segments,
             observations=observations,
             ocr=ocr,
             timeline=timeline,
+            audio_present=bool(probed.get("audio_present")),
+            source_kind=source_kind,
+            source_assets=[
+                {
+                    "name": frame.get("sourceName") or source.name,
+                    "kind": source_kind,
+                    "order": index,
+                }
+                for index, frame in enumerate(frames)
+            ],
             text_provider=text,
         )
         return markdown, payload
@@ -488,7 +578,7 @@ def analyze_file(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="opencontext",
-        description="Turn a video into evidence-linked developer context.",
+        description="Turn a video or image into evidence-linked developer context.",
     )
     parser.add_argument(
         "--version",
@@ -498,9 +588,9 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     analyze = commands.add_parser(
         "analyze",
-        help="Analyze one video, multiple videos, or a directory",
+        help="Analyze videos, images, multiple files, or a directory",
     )
-    analyze.add_argument("videos", nargs="+", type=Path)
+    analyze.add_argument("files", nargs="+", type=Path)
     analyze.add_argument("--out", type=Path, help="Write Markdown to this path")
     analyze.add_argument("--json", type=Path, dest="json_out", help="Write JSON to this path")
     analyze.add_argument(
@@ -691,7 +781,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command != "analyze":
         return 2
 
-    inputs = [Path(item) for item in args.videos]
+    inputs = [Path(item) for item in args.files]
     batch = (
         args.output_dir is not None
         or len(inputs) > 1
@@ -729,7 +819,7 @@ def main(argv: list[str] | None = None) -> int:
     if batch:
         videos = _expand_inputs(inputs)
         if not videos:
-            log.error("No supported video files found")
+            log.error("No supported media files found")
             return 1
         output_dir = args.output_dir or Path("opencontext-output")
         output_dir.mkdir(parents=True, exist_ok=True)

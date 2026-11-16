@@ -3,6 +3,7 @@ import {
   checkFileBeforeUpload,
   formatFileSize,
   FORMAT_MESSAGE,
+  IMAGE_SIZE_MESSAGE,
   SIZE_MESSAGE,
 } from "@/components/app/upload-rules";
 import { validateUpload } from "@/server/validation/upload";
@@ -23,8 +24,32 @@ describe("checkFileBeforeUpload (client pre-flight)", () => {
       expect(checkFileBeforeUpload(name, 1024)).toEqual({
         ok: true,
         extension,
+        kind: "video",
       });
     }
+  });
+
+  it("accepts PNG, JPEG, and WebP still images", () => {
+    for (const [name, extension] of [
+      ["diagram.png", "png"],
+      ["mockup.JPG", "jpg"],
+      ["photo.jpeg", "jpeg"],
+      ["reference.webp", "webp"],
+    ] as const) {
+      expect(checkFileBeforeUpload(name, 1024)).toEqual({
+        ok: true,
+        extension,
+        kind: "image",
+      });
+    }
+  });
+
+  it("accepts a single PDF", () => {
+    expect(checkFileBeforeUpload("spec.pdf", 1024)).toEqual({
+      ok: true,
+      extension: "pdf",
+      kind: "pdf",
+    });
   });
 
   it("rejects unsupported formats with the server message", () => {
@@ -52,6 +77,11 @@ describe("checkFileBeforeUpload (client pre-flight)", () => {
     if (!result.ok) {
       expect(result.message).toBe(SIZE_MESSAGE);
     }
+  });
+
+  it("rejects images over the 25 MB limit", () => {
+    const result = checkFileBeforeUpload("huge.png", 25 * 1024 * 1024 + 1);
+    expect(result).toEqual({ ok: false, message: IMAGE_SIZE_MESSAGE });
   });
 
   it("mirrors the server validation messages byte for byte", () => {

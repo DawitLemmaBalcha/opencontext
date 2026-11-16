@@ -61,25 +61,28 @@ export default async function JobPage({
     }
   }
 
-  // Source player: only after extraction has validated the file, and only
-  // on deployments that can stream media back (S3 presign; local disk
-  // cannot - results.md B2 edge case shown honestly).
-  let videoUrl: string | null = null;
-  let videoUnavailableNote: string | null = null;
+  // Source preview: videos use direct S3 playback; images use an
+  // owner-authenticated route that also works with local development storage.
+  let sourceUrl: string | null = null;
+  let sourceUnavailableNote: string | null = null;
   const playerReached =
     detail.status === "COMPLETED" ||
     detail.status === "PARTIAL" ||
     ["EXTRACTING", "TRANSCRIBING", "ANALYZING", "AGGREGATING", "GENERATING_CONTEXT"].includes(detail.status);
   if (playerReached && detail.source?.key) {
-    try {
-      videoUrl = await storage.presign(detail.source.key, 900);
-    } catch (error) {
-      console.error("Source presign failed:", error);
-      videoUrl = null;
-    }
-    if (videoUrl === null) {
-      videoUnavailableNote =
-        "This deployment stores media on local disk, so the source video is not streamed back to the browser. Transcripts, analysis, and exports are unaffected.";
+    if (detail.source.kind === "image" || detail.source.kind === "pdf") {
+      sourceUrl = `/api/jobs/${encodeURIComponent(detail.id)}/source`;
+    } else {
+      try {
+        sourceUrl = await storage.presign(detail.source.key, 900);
+      } catch (error) {
+        console.error("Source presign failed:", error);
+        sourceUrl = null;
+      }
+      if (sourceUrl === null) {
+        sourceUnavailableNote =
+          "This deployment stores media on local disk, so the source video is not streamed back to the browser. Transcripts, analysis, and exports are unaffected.";
+      }
     }
   }
 
@@ -92,8 +95,8 @@ export default async function JobPage({
         key={`${detail.updatedAt}:${resultView ? "result" : "state"}`}
         detail={detail}
         resultView={resultView}
-        videoUrl={videoUrl}
-        videoUnavailableNote={videoUnavailableNote}
+        sourceUrl={sourceUrl}
+        sourceUnavailableNote={sourceUnavailableNote}
       />
     </JobPageShell>
   );

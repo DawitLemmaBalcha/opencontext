@@ -30,7 +30,7 @@ future work.
 | `upload.md` | Accepted files, limits, validation, transfer failures, display names |
 | `jobs.md` | Job states, progress, partial failure, retry, retention, deletion |
 | `analysis-modes.md` | LOW / MEDIUM / HIGH context detail levels |
-| `results.md` | Result page, tabs, video player, timeline, empty states |
+| `results.md` | Result page, tabs, video/image/PDF source views, timeline, empty states |
 | `context-output.md` | Copy Context, Markdown/JSON download, document structure |
 | `demo.md` | Demo mode — entry, labeling, simulation rules |
 | `landing.md` | Landing page and docs — content and honesty rules |
@@ -41,11 +41,11 @@ future work.
 Every item below must be demonstrably true before the MVP is called done.
 
 1. An anonymous visitor can read the landing page and docs and run the demo.
-2. A signed-out user who clicks "Analyze a Video" is taken through GitHub sign-in and returned to the new-job page.
+2. A signed-out user who clicks "Analyze Media" is taken through GitHub sign-in and returned to the new-job page.
 3. A job is visible only to the account that created it.
-4. Accepted uploads: MP4, MOV, WebM, MKV, ≤ 500 MB, ≤ 30 minutes. Anything else is rejected with a named reason and creates no job.
+4. Accepted uploads: MP4, MOV, WebM, MKV at ≤ 500 MB and ≤ 30 minutes; PNG, JPG, JPEG, and WebP at ≤ 25 MB. Anything else is rejected with a named reason and creates no job.
 5. An interrupted upload creates no job and shows a clear failure message.
-6. A job created from a valid video moves through visible stages and ends in COMPLETED, PARTIAL, or FAILED — never a state that hides what happened.
+6. A job created from valid video, image-set, or PDF input moves through visible stages and ends in COMPLETED, PARTIAL, or FAILED — never a state that hides what happened.
 7. A job whose vision stage fails after earlier stages succeeded shows PARTIAL, keeps its completed content viewable, and offers "Retry failed stages" on the same job.
 8. A job created from an invalid file fails fast with a specific reason and offers no retry.
 9. The stage checklist and progress update without a page reload while the job is active.
@@ -53,7 +53,7 @@ Every item below must be demonstrably true before the MVP is called done.
 11. LOW, MEDIUM (default), and HIGH are selectable at job creation; the chosen level is displayed on the result page.
 12. The result page has five tabs — Transcript, Visual Analysis, Timeline, OCR, Agent Context — with Agent Context selected by default.
 13. Clicking a timeline entry seeks the video player to that timestamp.
-14. A video with no audio track completes with a clear "no audio" notice and does not fail.
+14. A video with no audio track completes with a clear "no audio" notice and does not fail; an image skips transcription with an image-specific notice.
 15. Copy Context copies the full context Markdown and shows success feedback; on clipboard failure the text is presented for manual copy and never silently lost.
 16. Download Markdown and Download JSON both work.
 17. The demo is reachable anonymously, always shows a persistent "Demo Analysis" badge, uses pre-authored data, and never appears in any user's job list.

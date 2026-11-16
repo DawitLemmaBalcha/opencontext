@@ -28,8 +28,9 @@ MEDIA_PATH = "/media/video.mp4"
 class _Handler:
     """Route-and-record fake for every worker-API request."""
 
-    def __init__(self) -> None:
+    def __init__(self, assets: list[dict] | None = None) -> None:
         self.calls: list[dict] = []
+        self.assets = assets or []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -42,8 +43,32 @@ class _Handler:
                 body = request.content
         self.calls.append({"method": request.method, "path": path, "body": body})
         if path == f"/api/worker/jobs/{JOB_ID}/source":
+            if self.assets:
+                return httpx.Response(
+                    200,
+                    json={
+                        "uri": "http://media.test/assets/1.png",
+                        "provider": "local",
+                        "assets": [
+                            {
+                                "uri": f"http://media.test/assets/{index + 1}.{asset['ext']}",
+                                "provider": asset.get("provider"),
+                                "sizeBytes": asset.get("sizeBytes"),
+                                "filename": asset.get("filename"),
+                                "kind": asset.get("kind"),
+                                "ext": asset.get("ext"),
+                                "mime": asset.get("mime"),
+                                "order": asset.get("order"),
+                            }
+                            for index, asset in enumerate(self.assets)
+                        ],
+                    },
+                )
             media_uri = f"http://media.test{MEDIA_PATH}"
             return httpx.Response(200, json={"uri": media_uri, "provider": "local"})
+        if path.startswith("/assets/"):
+            index = int(path.removeprefix("/assets/").split(".", 1)[0]) - 1
+            return httpx.Response(200, content=self.assets[index].get("bytes", b"asset"))
         if path == MEDIA_PATH:
             return httpx.Response(200, content=b"media-bytes")
         if path.startswith(f"/api/worker/jobs/{JOB_ID}/"):
@@ -141,7 +166,11 @@ def _settings() -> Settings:
     return Settings(worker_api_url=API_BASE, worker_id="worker-1")
 
 
-def _job(detail_level: str = "MEDIUM", stage_states: list[dict] | None = None) -> dict:
+def _job(
+    detail_level: str = "MEDIUM",
+    stage_states: list[dict] | None = None,
+    source: dict | None = None,
+) -> dict:
     return {
         "id": JOB_ID,
         "displayName": "Demo session",
@@ -149,6 +178,7 @@ def _job(detail_level: str = "MEDIUM", stage_states: list[dict] | None = None) -
         "detailLevel": detail_level,
         "stageStates": stage_states or [],
         "progress": 0,
+        "source": source,
     }
 
 
@@ -198,6 +228,36 @@ def _extract_frames_ok(
     return extract_frames
 
 
+def _extract_image_ok() -> Callable[[str, str], dict]:
+    def extract_image(source: str, destination: str) -> dict:
+        path = Path(destination)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"fake-image-jpeg")
+        return {"timestamp": 0.0, "path": path}
+
+    return extract_image
+
+
+def _extract_pdf_ok() -> Callable[[str, str], list[dict]]:
+    def extract_pdf(source: str, output_dir: str) -> list[dict]:
+        directory = Path(output_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        pages = []
+        for page_number in (1, 2):
+            path = directory / f"page_{page_number:03d}.jpg"
+            path.write_bytes(f"page-{page_number}".encode())
+            pages.append(
+                {
+                    "pageNumber": page_number,
+                    "path": path,
+                    "text": f"Embedded line {page_number}",
+                }
+            )
+        return pages
+
+    return extract_pdf
+
+
 def _make_pipeline(
     handler: _Handler,
     *,
@@ -208,6 +268,8 @@ def _make_pipeline(
     probe: Callable[[str], dict] | None = None,
     extract_audio: Callable[[str, str], bool] | None = None,
     extract_frames: Callable[[str, str], list[dict]] | None = None,
+    extract_image: Callable[[str, str], dict] | None = None,
+    extract_pdf: Callable[[str, str], list[dict]] | None = None,
 ) -> Pipeline:
     return Pipeline(
         _api(handler),
@@ -219,6 +281,8 @@ def _make_pipeline(
         probe_fn=probe or _probe_ok(),
         extract_audio_fn=extract_audio or _extract_audio_ok(),
         extract_frames_fn=extract_frames or _extract_frames_ok(),
+        extract_image_fn=extract_image or _extract_image_ok(),
+        extract_pdf_fn=extract_pdf or _extract_pdf_ok(),
     )
 
 
@@ -517,6 +581,156 @@ def test_no_audio_skips_transcription() -> None:
         }
     ]
     assert any(path.endswith("/complete") for path in handler.paths())
+
+
+def test_still_image_skips_audio_and_reuses_vision_context_pipeline() -> None:
+    handler = _Handler()
+    transcription = FakeTranscription()
+    vision = FakeVision()
+    audio_calls: list[tuple[str, str]] = []
+
+    def extract_audio(source: str, destination: str) -> bool:
+        audio_calls.append((source, destination))
+        return True
+
+    pipeline = _make_pipeline(
+        handler,
+        transcription=transcription,
+        vision=vision,
+        extract_audio=extract_audio,
+        extract_image=_extract_image_ok(),
+        probe=_probe_ok(audio_present=False, duration=None),
+    )
+    job = _job(source={"ext": "png", "kind": "image"})
+
+    assert pipeline.run_job(job) == "completed"
+    assert transcription.calls == []
+    assert audio_calls == []
+    assert len(vision.calls) == 1
+    assert vision.calls[0][1]["sourceKind"] == "image"
+    assert vision.calls[0][1]["timestampSec"] == 0.0
+
+    stage_results = [
+        body for path, body in handler.json_requests() if path.endswith("/stage-result")
+    ]
+    assert stage_results[0]["data"] == {
+        "durationSec": 0.0,
+        "width": 640,
+        "height": 360,
+        "audioPresent": False,
+        "frameCount": 1,
+        "sourceKind": "image",
+        "assetCount": 1,
+        "sourceAssets": [
+            {"name": "Source 1", "kind": "image", "order": 0},
+        ],
+    }
+    assert stage_results[1]["outcome"] == "SKIPPED"
+    generated = stage_results[-1]["data"]
+    assert generated["json"]["source"]["kind"] == "image"
+    assert "**Source type:** Still image" in generated["markdown"]
+    assert "Still image has no audio" in generated["markdown"]
+    artifact_bodies = handler.artifact_bodies()
+    assert len(artifact_bodies) == 1
+    assert b"FRAME" in artifact_bodies[0]
+
+
+def test_ordered_image_set_builds_cross_image_context() -> None:
+    class StateVision:
+        name = "state-vision"
+        calls: list[dict] = []
+
+        def analyze(self, frame_bytes: bytes, context: dict) -> dict:
+            self.calls.append(context)
+            text = "Review" if context["sourceIndex"] == 0 else "Success"
+            return {
+                "certainty": "OBSERVED",
+                "sceneTitle": text,
+                "visualDescription": f"{text} screen",
+                "uiElements": ["Continue"],
+                "visibleText": [text],
+                "interactions": [],
+                "designObservations": {},
+                "importantChanges": [],
+            }
+
+    assets = [
+        {
+            "uri": "",
+            "provider": "local",
+            "sizeBytes": 5,
+            "filename": "review.png",
+            "kind": "image",
+            "ext": "png",
+            "mime": "image/png",
+            "order": 0,
+            "bytes": b"one",
+        },
+        {
+            "uri": "",
+            "provider": "local",
+            "sizeBytes": 5,
+            "filename": "success.png",
+            "kind": "image",
+            "ext": "png",
+            "mime": "image/png",
+            "order": 1,
+            "bytes": b"two",
+        },
+    ]
+    handler = _Handler(assets)
+    vision = StateVision()
+    pipeline = _make_pipeline(
+        handler,
+        vision=vision,
+        extract_image=_extract_image_ok(),
+        probe=_probe_ok(audio_present=False, duration=None),
+    )
+
+    assert pipeline.run_job(_job(source={"kind": "image", "ext": "png"})) == "completed"
+    assert sorted(call["sourceIndex"] for call in vision.calls) == [0, 1]
+    stage_results = [
+        body for path, body in handler.json_requests() if path.endswith("/stage-result")
+    ]
+    assert stage_results[0]["data"]["assetCount"] == 2
+    assert stage_results[0]["data"]["sourceAssets"] == [
+        {"name": "review.png", "kind": "image", "order": 0},
+        {"name": "success.png", "kind": "image", "order": 1},
+    ]
+    generated = stage_results[-1]["data"]["json"]
+    assert generated["crossImageFindings"]
+    assert "visible text added" in generated["crossImageFindings"][0]["change"]
+    assert len(handler.artifact_bodies()) == 2
+
+
+def test_pdf_renders_pages_and_extracts_embedded_text() -> None:
+    handler = _Handler()
+    vision = FakeVision()
+    pipeline = _make_pipeline(
+        handler,
+        vision=vision,
+        extract_pdf=_extract_pdf_ok(),
+    )
+
+    assert pipeline.run_job(_job(source={"kind": "pdf", "ext": "pdf"})) == "completed"
+    assert len(vision.calls) == 2
+    stage_results = [
+        body for path, body in handler.json_requests() if path.endswith("/stage-result")
+    ]
+    assert stage_results[0]["data"]["pageCount"] == 2
+    assert stage_results[2]["data"]["ocr"][0] == {
+        "timestampSec": 0.0,
+        "frameId": "pdf-page-01",
+        "text": "Embedded line 1",
+        "provider": "pdf_text",
+    }
+    generated = stage_results[-1]["data"]["json"]
+    assert generated["source"]["kind"] == "pdf"
+    assert generated["sourceAssets"] == [
+        {"name": "PDF page 1", "kind": "pdf", "order": 0},
+        {"name": "PDF page 2", "kind": "pdf", "order": 1},
+    ]
+    assert "## Source Pages" in stage_results[-1]["data"]["markdown"]
 
 
 def test_low_detail_selects_no_frames_at_one_fps() -> None:

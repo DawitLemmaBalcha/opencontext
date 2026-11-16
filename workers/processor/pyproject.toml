@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "opencontext-video"
 version = "0.1.0"
-description = "Turn video into evidence-linked developer context for text-only AI"
+description = "Turn video and images into evidence-linked developer context for text-only AI"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
@@ -23,7 +23,9 @@ classifiers = [
 dependencies = [
   "httpx",
   "imageio-ffmpeg",
+  "pillow",
   "pydantic",
+  "pypdfium2",
   "python-dotenv",
 ]
 

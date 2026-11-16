@@ -37,6 +37,8 @@ export async function POST(_request: Request, context: RouteContext): Promise<Re
           "UPLOAD_INCOMPLETE",
           "The uploaded object is missing or does not match the declared file",
         );
+      case "INVALID_CONTENT":
+        return errorResponse("VALIDATION_ERROR", result.message);
       case "OK":
         return NextResponse.json(jobToSummary(result.job), { status: 201 });
     }

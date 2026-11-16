@@ -318,6 +318,39 @@ def test_download_source_relative_uri_resolves_against_base(tmp_path) -> None:
     assert paths == ["/api/worker/jobs/j1/source", "/media/video.mp4"]
 
 
+def test_download_sources_preserves_asset_order_and_extensions(tmp_path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/worker/jobs/j1/source":
+            return httpx.Response(
+                200,
+                json={
+                    "uri": "/media/1.png",
+                    "assets": [
+                        {
+                            "uri": "/media/2.webp",
+                            "filename": "second.webp",
+                            "order": 1,
+                            "ext": "webp",
+                        },
+                        {
+                            "uri": "/media/1.png",
+                            "filename": "first.png",
+                            "order": 0,
+                            "ext": "png",
+                        },
+                    ],
+                },
+            )
+        return httpx.Response(200, content=request.url.path.encode())
+
+    api = _make_client(handler)
+    sources = api.download_sources("j1", tmp_path)
+
+    assert [source["filename"] for source in sources] == ["second.webp", "first.png"]
+    assert sources[0]["path"].read_bytes() == b"/media/2.webp"
+    assert sources[1]["path"].read_bytes() == b"/media/1.png"
+
+
 def test_download_source_retries_on_server_error(tmp_path, monkeypatch) -> None:
     delays: list[float] = []
     _patch_sleep(monkeypatch, delays)

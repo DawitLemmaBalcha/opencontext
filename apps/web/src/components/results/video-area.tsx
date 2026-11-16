@@ -9,34 +9,42 @@ export interface VideoAreaProps {
   demo?: boolean;
   /** Echoed in the placeholder when a timeline entry was clicked. */
   selectedTimestamp?: number | null;
-  /** A real `<video>` element. Rendered as-is when provided. */
-  videoSlot?: ReactNode;
+  sourceKind?: "video" | "image" | "pdf";
+  /** A real `<video>` or `<img>` element. Rendered as-is when provided. */
+  sourceSlot?: ReactNode;
   className?: string;
 }
 
 /**
  * Video player area (results.md B2).
  *
- * Job pages pass a real `<video>` via `videoSlot` and wire context citations
- * and timeline clicks through the viewer's `onSeek`. Demo mode renders a
- * labeled placeholder; it never hotlinks unrelated media.
+ * Job pages pass a real `<video>` or `<img>` via `sourceSlot` and wire
+ * context citations and timeline clicks through the viewer's `onSeek`.
+ * Demo mode renders a labeled placeholder; it never hotlinks unrelated media.
  */
 export function VideoArea({
   sourceName,
   demo = false,
   selectedTimestamp = null,
-  videoSlot,
+  sourceKind = "video",
+  sourceSlot,
   className,
 }: VideoAreaProps) {
-  if (videoSlot) {
+  if (sourceSlot) {
     return (
       <div
         id="source-video"
         role="region"
-        aria-label="Source video"
+        aria-label={
+          sourceKind === "image"
+            ? "Source image"
+            : sourceKind === "pdf"
+              ? "Source PDF"
+              : "Source video"
+        }
         className={cx("overflow-hidden rounded-lg border border-line", className)}
       >
-        {videoSlot}
+        {sourceSlot}
       </div>
     );
   }
@@ -45,19 +53,40 @@ export function VideoArea({
     <div
       id="source-video"
       role="region"
-      aria-label="Source video"
+      aria-label={
+        sourceKind === "image"
+          ? "Source image"
+          : sourceKind === "pdf"
+            ? "Source PDF"
+            : "Source video"
+      }
       className={cx(
         "bg-grid relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-line bg-code-bg",
         className,
       )}
     >
       <div className="mx-4 flex max-w-md flex-col items-center gap-3 text-center">
-        <span className="label-mono">Sample video preview</span>
+        <span className="label-mono">
+          {sourceKind === "image"
+            ? "Source image"
+            : sourceKind === "pdf"
+              ? "Source PDF"
+              : "Sample video preview"}
+        </span>
         <p className="text-sm font-medium text-ink">
-          {sourceName ?? "Source video"}
+          {sourceName ??
+            (sourceKind === "image"
+              ? "Source image"
+              : sourceKind === "pdf"
+                ? "Source PDF"
+                : "Source video")}
         </p>
         <p className="text-sm leading-relaxed text-ink-muted">
-          {demo
+          {sourceKind === "image" || sourceKind === "pdf"
+            ? demo
+              ? "The demo uses pre-authored data with a text-only sample preview."
+              : `The uploaded ${sourceKind === "pdf" ? "PDF" : "image"} preview appears here once its context is ready.`
+            : demo
             ? "The demo uses pre-authored data — no real video is played. For your own jobs, the source video player appears here."
             : "The source video player appears here once the job reaches the extraction stage. Timeline entries will seek it directly."}
         </p>

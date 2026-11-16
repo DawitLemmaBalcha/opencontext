@@ -11,9 +11,9 @@ import { Section } from "@/components/ui/section";
 
 const PIPELINE_STEPS = [
   {
-    label: "Video",
+    label: "Video or Image",
     detail:
-      "A recording, screen capture, or visual reference is the input.",
+      "A recording, screen capture, or still image is the input.",
   },
   {
     label: "Audio + Frames",
@@ -74,7 +74,7 @@ const WHY_CARDS = [
 ];
 
 const HOW_IT_WORKS_STEPS = [
-  "Upload a video or screen recording",
+  "Upload a video, screen recording, or image",
   "Extract audio and sample representative frames",
   "Transcribe speech with timestamps",
   "Analyze frames with a vision model",
@@ -89,7 +89,7 @@ const ROADMAP_ITEMS = [
   {
     label: "Working now",
     tone: "success" as const,
-    items: ["GitHub sign-in, video uploads, job tracking, and results", "Python worker for extraction, transcription, vision, and context", "Markdown/JSON handoff with clickable evidence references"],
+    items: ["GitHub sign-in, video and image uploads, job tracking, and results", "Python worker for extraction, transcription, vision, and context", "Markdown/JSON handoff with clickable evidence references"],
   },
   {
     label: "Next",
@@ -123,13 +123,13 @@ export default function Home() {
                 Give text-only AI agents eyes and ears.
               </h1>
               <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-muted sm:text-xl">
-                OpenContext turns videos and screen recordings into evidence-
-                linked context that text-only coding agents can use and
-                developers can verify.
+                OpenContext turns videos, screen recordings, and images into
+                evidence-linked context that text-only coding agents can use
+                and developers can verify.
               </p>
               <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
                 <ButtonLink href="/app/new" size="lg">
-                  Analyze a Video
+                  Analyze Media
                 </ButtonLink>
                 <ButtonLink
                   href="https://github.com/kylosonic/opencontext"
@@ -154,7 +154,7 @@ export default function Home() {
         <section aria-labelledby="pipeline-title" className="border-y border-line bg-panel-muted/60 py-14 sm:py-20">
           <Container>
             <h2 id="pipeline-title" className="sr-only">
-              How video becomes context
+              How visual media becomes context
             </h2>
             <PipelineStrip
               steps={PIPELINE_STEPS}
@@ -184,7 +184,7 @@ export default function Home() {
           id="why"
           kicker="Why OpenContext?"
           title="Visual information, translated for text-only models"
-          description="Developers increasingly run local and text-only models. When the reference material is a video, a recording of a UI, or a demo someone sent you, those models cannot see it. OpenContext bridges that gap."
+          description="Developers increasingly run local and text-only models. When the reference material is a video, an image, a recording of a UI, or a demo someone sent you, those models cannot see it. OpenContext bridges that gap."
         >
           <div className="grid gap-4 sm:grid-cols-2">
             {WHY_CARDS.map((card) => (

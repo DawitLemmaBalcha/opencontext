@@ -159,12 +159,10 @@ class ApiClient:
     def get_source(self, job_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/worker/jobs/{job_id}/source")
 
-    def download_source(self, job_id: str, dest: Path) -> None:
-        """Download the source media to ``dest`` (local rel path → app base)."""
+    def _download_uri(self, uri: str, dest: Path) -> None:
+        """Download one source URI (local rel path → app base)."""
 
         def call() -> None:
-            info = self.get_source(job_id)
-            uri = str(info["uri"])
             url = uri if uri.startswith(("http://", "https://")) else f"{self.base_url}{uri}"
             # Presigned object-storage URLs carry their own signature; sending
             # the worker Bearer token makes S3 reject the request with 400.
@@ -183,6 +181,34 @@ class ApiClient:
                 raise TransientFailure(f"source download failed: {exc}") from exc
 
         run_with_retry(call)
+
+    def download_source(self, job_id: str, dest: Path) -> None:
+        """Download the legacy primary source media to ``dest``."""
+        info = self.get_source(job_id)
+        self._download_uri(str(info["uri"]), dest)
+
+    def download_sources(self, job_id: str, workdir: Path) -> list[dict[str, Any]]:
+        """Download every ordered source asset for a video/image/PDF job."""
+        info = self.get_source(job_id)
+        raw_assets = info.get("assets")
+        assets = raw_assets if isinstance(raw_assets, list) and raw_assets else [info]
+        downloaded: list[dict[str, Any]] = []
+        for index, asset in enumerate(assets):
+            if not isinstance(asset, dict):
+                continue
+            ext = str(asset.get("ext") or Path(str(asset.get("filename") or "")).suffix)
+            ext = ext.lower().lstrip(".")
+            destination = workdir / f"source_{index + 1:02d}.{ext or 'bin'}"
+            self._download_uri(str(asset["uri"]), destination)
+            downloaded.append(
+                {
+                    **asset,
+                    "path": destination,
+                    "order": int(asset.get("order", index)),
+                    "ext": ext,
+                }
+            )
+        return downloaded
 
     def progress(
         self,

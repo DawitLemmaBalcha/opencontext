@@ -22,7 +22,7 @@ import type { ReactNode } from "react";
  *   GET job result payload        → `result` (markdown + full JSON +
  *                                  transcript / observations / ocr /
  *                                  timeline collections).
- *   `<video>` element             → `videoSlot`; timeline clicks arrive via
+ *   `<video>` or `<img>` element  → `sourceSlot`; timeline clicks arrive via
  *                                  `onSeek(timestampSec)` — wire it to
  *                                  `video.currentTime = t; video.play()`.
  *
@@ -65,6 +65,8 @@ export interface JobHeaderView {
   detailLevel: "LOW" | "MEDIUM" | "HIGH";
   /** False when the probed source had no audio stream. */
   audioPresent?: boolean | null;
+  /** Still images use the same vision pipeline but have no duration/audio. */
+  sourceKind?: "video" | "image" | "pdf";
   /** ISO timestamp. */
   createdAt: string;
   /** ISO timestamp; hidden when unknown. */
@@ -88,6 +90,7 @@ export interface DesignObservationsView {
 
 export interface VisualObservationView {
   timestampSec: number;
+  frameId?: string;
   certainty: Certainty;
   sceneTitle?: string;
   visualDescription?: string;
@@ -102,6 +105,7 @@ export interface VisualObservationView {
 
 export interface OcrEntryView {
   timestampSec: number;
+  frameId?: string;
   text: string;
   /** 0–1; hidden when unknown. */
   confidence?: number;
@@ -143,8 +147,8 @@ export interface ResultViewerProps {
   demo?: boolean;
   /** Timeline and evidence reference click → seek to a source timestamp. */
   onSeek?: (timestampSec: number) => void;
-  /** A real `<video>` element. Omitted → honest placeholder panel. */
-  videoSlot?: ReactNode;
+  /** A real `<video>` or `<img>` element. Omitted → placeholder panel. */
+  sourceSlot?: ReactNode;
   /** Currently selected timestamp, echoed in the placeholder (demo wiring). */
   selectedTimestamp?: number | null;
 }

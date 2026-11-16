@@ -160,6 +160,8 @@ model Job {
   height       Int?
   audioPresent Boolean?
   frameCount   Int?
+  assetCount   Int?
+  pageCount    Int?
 
   // AGGREGATING output (timeline payload) — persisted here so PARTIAL jobs
   // keep their timeline viewable even when GENERATING_CONTEXT never ran.

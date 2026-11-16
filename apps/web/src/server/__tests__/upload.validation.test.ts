@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { UPLOAD_LIMITS } from "@opencontext/schemas";
-import { sanitizeDisplayName, validateUpload } from "@/server/validation/upload";
+import {
+  sanitizeDisplayName,
+  validateStoredMedia,
+  validateUpload,
+} from "@/server/validation/upload";
 
 const MAX = UPLOAD_LIMITS.maxBytes;
 
@@ -21,14 +25,30 @@ describe("validateUpload (upload.md B1 — authoritative server gate)", () => {
     expect(validateUpload("video.mkv", 1000, "video/x-matroska").ok).toBe(true);
   });
 
+  it("accepts supported images and returns their source kind", () => {
+    const png = validateUpload("mockup.png", 1000, "image/png");
+    const jpeg = validateUpload("reference.jpeg", 1000, "image/jpeg");
+    const webp = validateUpload("diagram.webp", 1000);
+    expect(png.ok && png.kind).toBe("image");
+    expect(jpeg.ok && jpeg.kind).toBe("image");
+    expect(webp.ok && webp.kind).toBe("image");
+  });
+
+  it("accepts PDFs up to 50 MB", () => {
+    const result = validateUpload("spec.pdf", 1000, "application/pdf");
+    expect(result.ok && result.kind).toBe("pdf");
+    expect(validateUpload("huge.pdf", UPLOAD_LIMITS.maxPdfBytes + 1).ok).toBe(false);
+  });
+
   it("rejects unsupported or mismatched media types", () => {
     expect(validateUpload("video.mp4", 1000, "text/plain").ok).toBe(false);
     expect(validateUpload("video.mp4", 1000, "video/webm").ok).toBe(false);
     expect(validateUpload("video.mov", 1000, "video/mp4").ok).toBe(false);
+    expect(validateUpload("mockup.png", 1000, "image/jpeg").ok).toBe(false);
   });
 
   it("rejects unsupported formats with FORMAT_UNSUPPORTED", () => {
-    for (const name of ["video.txt", "video.avi", "video.pdf", "video.exe"]) {
+    for (const name of ["video.txt", "video.avi", "video.gif", "video.exe"]) {
       const result = validateUpload(name, 1000);
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -62,12 +82,51 @@ describe("validateUpload (upload.md B1 — authoritative server gate)", () => {
     expect(validateUpload("big.mp4", MAX).ok).toBe(true);
   });
 
+  it("applies the smaller 25 MB limit to still images", () => {
+    expect(validateUpload("photo.jpg", UPLOAD_LIMITS.maxImageBytes).ok).toBe(true);
+    const oversized = validateUpload(
+      "photo.jpg",
+      UPLOAD_LIMITS.maxImageBytes + 1,
+    );
+    expect(oversized.ok).toBe(false);
+    if (!oversized.ok) {
+      expect(oversized.message).toBe("Image is too large — the limit is 25 MB");
+    }
+  });
+
   it("rejects empty files with VALIDATION_ERROR", () => {
     const result = validateUpload("empty.mp4", 0);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.code).toBe("VALIDATION_ERROR");
     }
+  });
+});
+
+describe("validateStoredMedia", () => {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+
+  it("accepts real image bytes and a PDF signature", async () => {
+    expect(await validateStoredMedia(png, "png")).toMatchObject({
+      ok: true,
+      width: 1,
+      height: 1,
+    });
+    expect(
+      await validateStoredMedia(Buffer.from("%PDF-1.7\n"), "pdf"),
+    ).toEqual({ ok: true });
+  });
+
+  it("rejects extension/content mismatches and corrupt bytes", async () => {
+    const mismatch = await validateStoredMedia(png, "jpg");
+    expect(mismatch.ok).toBe(false);
+    const corrupt = await validateStoredMedia(Buffer.from("not an image"), "png");
+    expect(corrupt.ok).toBe(false);
+    const fakePdf = await validateStoredMedia(Buffer.from("not a pdf"), "pdf");
+    expect(fakePdf.ok).toBe(false);
   });
 });
 
@@ -102,6 +161,6 @@ describe("sanitizeDisplayName (upload.md B6)", () => {
   });
 
   it("falls back to a safe name when everything is stripped", () => {
-    expect(sanitizeDisplayName("\\\\")).toBe("video");
+    expect(sanitizeDisplayName("\\\\")).toBe("media");
   });
 });

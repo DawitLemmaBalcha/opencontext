@@ -17,6 +17,7 @@ vi.mock("@/auth", () => ({ auth: authMock.auth }));
 import { POST as uploadsPost } from "@/app/api/uploads/route";
 import { PUT as uploadBodyPut } from "@/app/api/uploads/[id]/body/route";
 import { POST as uploadCompletePost } from "@/app/api/uploads/[id]/complete/route";
+import { POST as uploadBatchCompletePost } from "@/app/api/uploads/batch/complete/route";
 import { prisma } from "@/server/db/prisma";
 import { storage } from "@/server/storage";
 import { jobToDetail } from "@/server/jobs";
@@ -224,6 +225,46 @@ function generateFixture(output: string): void {
   );
 }
 
+function generateImage(output: string, color = "white"): void {
+  execFileSync(
+    "ffmpeg",
+    [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${color}:s=320x180`,
+      "-frames:v",
+      "1",
+      output,
+    ],
+    { stdio: "pipe", timeout: 30_000 },
+  );
+}
+
+function generatePdf(output: string): void {
+  const script = [
+    "from PIL import Image, ImageDraw",
+    "import sys",
+    "pages = []",
+    "for index, color in enumerate(('white', 'gray')):",
+    "    page = Image.new('RGB', (320, 180), color)",
+    "    draw = ImageDraw.Draw(page)",
+    "    draw.text((20, 20), f'PDF page {index + 1}', fill='black')",
+    "    pages.append(page)",
+    "pages[0].save(sys.argv[1], save_all=True, append_images=pages[1:])",
+  ].join("\n");
+  execFileSync(python as string, ["-c", script, output], {
+    cwd: REPO_ROOT,
+    env: workerPythonEnv(),
+    stdio: "pipe",
+    timeout: 30_000,
+  });
+}
+
 async function runWorkerOnce(apiUrl: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(python as string, ["-m", "oc_worker.main", "--once"], {
@@ -340,7 +381,10 @@ describe.skipIf(!python || !ffmpeg)("local end-to-end job", () => {
 
     const [segments, observations, ocr, media, result] = await Promise.all([
       prisma.transcriptSegment.findMany({ where: { jobId: job.id } }),
-      prisma.visualObservation.findMany({ where: { jobId: job.id } }),
+      prisma.visualObservation.findMany({
+        where: { jobId: job.id },
+        orderBy: { frameId: "asc" },
+      }),
       prisma.ocrObservation.findMany({ where: { jobId: job.id } }),
       prisma.media.findMany({ where: { jobId: job.id } }),
       prisma.processingResult.findUnique({ where: { jobId: job.id } }),
@@ -359,5 +403,179 @@ describe.skipIf(!python || !ffmpeg)("local end-to-end job", () => {
     const payload = result?.json as { evidence?: unknown[]; timeline?: unknown[] };
     expect(payload.evidence?.length).toBeGreaterThan(0);
     expect(payload.timeline?.length).toBeGreaterThan(0);
+  }, 120_000);
+
+  it("commits and analyzes an ordered image set end to end", async () => {
+    const user = await createUser();
+    authMock.auth.mockResolvedValue({ user: { id: user.id, name: "Test User" } });
+    const workDir = path.join(REPO_ROOT, ".tmp", "node-e2e");
+    mkdirSync(workDir, { recursive: true });
+    const files = ["first.png", "second.png"];
+    const uploadIds: string[] = [];
+    for (const [index, filename] of files.entries()) {
+      const imagePath = path.join(workDir, filename);
+      generateImage(imagePath, index === 0 ? "white" : "gray");
+      const source = readFileSync(imagePath);
+      const intentResponse = await uploadsPost(
+        new Request("http://test.local/api/uploads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename,
+            sizeBytes: source.length,
+            mime: "image/png",
+            detailLevel: "MEDIUM",
+          }),
+        }),
+      );
+      const intent = (await intentResponse.json()) as {
+        uploadId: string;
+        url: string;
+        headers: Record<string, string>;
+      };
+      await uploadBodyPut(
+        new Request(`http://test.local${intent.url}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": intent.headers["Content-Type"],
+            "Content-Length": String(source.length),
+          },
+          body: new Uint8Array(source),
+        }),
+        { params: Promise.resolve({ id: intent.uploadId }) },
+      );
+      uploadIds.push(intent.uploadId);
+    }
+
+    const upload = await uploadBatchCompletePost(
+      new Request("http://test.local/api/uploads/batch/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadIds, detailLevel: "MEDIUM" }),
+      }),
+    );
+    expect(upload.status).toBe(201);
+    const summary = (await upload.json()) as { id: string };
+
+    const server = createWorkerServer();
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("worker test server has no TCP address");
+    }
+    try {
+      await runWorkerOnce(`http://127.0.0.1:${address.port}`);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+
+    const job = await runningJob(summary.id);
+    expect(job.status).toBe("COMPLETED");
+    expect(job.sourceExt).toBe("png");
+    expect(job.assetCount).toBe(2);
+    expect(job.audioPresent).toBe(false);
+    const [sources, observations, segments, result] = await Promise.all([
+      prisma.media.findMany({ where: { jobId: job.id, kind: "SOURCE" } }),
+      prisma.visualObservation.findMany({ where: { jobId: job.id } }),
+      prisma.transcriptSegment.findMany({ where: { jobId: job.id } }),
+      prisma.processingResult.findUnique({ where: { jobId: job.id } }),
+    ]);
+    expect(sources).toHaveLength(2);
+    expect(segments).toHaveLength(0);
+    expect(observations.map((item) => item.frameId)).toEqual([
+      "image-01",
+      "image-02",
+    ]);
+    const payload = result?.json as {
+      source?: { kind?: string };
+      sourceAssets?: unknown[];
+    };
+    expect(payload.source?.kind).toBe("image");
+    expect(payload.sourceAssets).toHaveLength(2);
+  }, 120_000);
+
+  it("renders and analyzes a PDF through the worker end to end", async () => {
+    const user = await createUser();
+    authMock.auth.mockResolvedValue({ user: { id: user.id, name: "Test User" } });
+    const workDir = path.join(REPO_ROOT, ".tmp", "node-e2e");
+    mkdirSync(workDir, { recursive: true });
+    const pdfPath = path.join(workDir, "reference.pdf");
+    generatePdf(pdfPath);
+    const source = readFileSync(pdfPath);
+
+    const intentResponse = await uploadsPost(
+      new Request("http://test.local/api/uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: "reference.pdf",
+          sizeBytes: source.length,
+          mime: "application/pdf",
+          detailLevel: "MEDIUM",
+        }),
+      }),
+    );
+    const intent = (await intentResponse.json()) as {
+      uploadId: string;
+      url: string;
+      headers: Record<string, string>;
+    };
+    await uploadBodyPut(
+      new Request(`http://test.local${intent.url}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": intent.headers["Content-Type"],
+          "Content-Length": String(source.length),
+        },
+        body: new Uint8Array(source),
+      }),
+      { params: Promise.resolve({ id: intent.uploadId }) },
+    );
+    const upload = await uploadCompletePost(
+      new Request(`http://test.local/api/uploads/${intent.uploadId}/complete`, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: intent.uploadId }) },
+    );
+    expect(upload.status).toBe(201);
+    const summary = (await upload.json()) as { id: string };
+
+    const server = createWorkerServer();
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("worker test server has no TCP address");
+    }
+    try {
+      await runWorkerOnce(`http://127.0.0.1:${address.port}`);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+
+    const job = await runningJob(summary.id);
+    expect(job.status).toBe("COMPLETED");
+    expect(job.sourceExt).toBe("pdf");
+    expect(job.assetCount).toBe(1);
+    expect(job.pageCount).toBe(2);
+    expect(job.audioPresent).toBe(false);
+    const [observations, segments, result] = await Promise.all([
+      prisma.visualObservation.findMany({
+        where: { jobId: job.id },
+        orderBy: { frameId: "asc" },
+      }),
+      prisma.transcriptSegment.findMany({ where: { jobId: job.id } }),
+      prisma.processingResult.findUnique({ where: { jobId: job.id } }),
+    ]);
+    expect(segments).toHaveLength(0);
+    expect(observations.map((item) => item.frameId)).toEqual([
+      "pdf-page-01",
+      "pdf-page-02",
+    ]);
+    expect(result?.markdown).toContain("PDF page 1");
+    expect(result?.markdown).toContain("PDF page 2");
   }, 120_000);
 });

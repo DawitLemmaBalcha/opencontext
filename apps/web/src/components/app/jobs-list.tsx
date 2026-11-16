@@ -235,7 +235,7 @@ export function JobsList({ initialJobs }: JobsListProps) {
         open={deleting !== null}
         title={deleting?.displayName ?? ""}
         heading="Delete this job?"
-        body="The job, its source video, and all results will be removed permanently. This cannot be undone."
+        body="The job, its source media, and all results will be removed permanently. This cannot be undone."
         busy={deleteBusy}
         error={deleteError}
         onConfirm={() => void confirmDelete()}
@@ -323,7 +323,7 @@ function JobCard({
       </div>
       <p className="mt-2 text-xs text-ink-faint">
         {stageLabel ?? (failed ? "Processing did not complete" : "Finished")}
-        {active && " · Large videos can take a while"}
+        {active && " · Larger files can take a while"}
       </p>
     </Card>
   );

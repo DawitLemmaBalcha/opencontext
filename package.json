@@ -2,7 +2,7 @@
   "name": "opencontext",
   "version": "0.1.0",
   "private": true,
-  "description": "Turn video into context for text-only AI",
+  "description": "Turn video and images into context for text-only AI",
   "workspaces": [
     "apps/*",
     "packages/*"

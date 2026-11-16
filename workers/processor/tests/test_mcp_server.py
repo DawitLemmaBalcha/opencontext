@@ -55,6 +55,8 @@ def test_mcp_server_lists_and_calls_tools(tmp_path: Path) -> None:
                 tools = await session.list_tools()
                 names = {tool.name for tool in tools.tools}
                 assert names == {
+                    "analyze_image",
+                    "analyze_media",
                     "analyze_video",
                     "context_evidence",
                     "implementation_brief",
