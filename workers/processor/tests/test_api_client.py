@@ -138,6 +138,16 @@ def test_progress_omits_message_when_none() -> None:
     assert "message" not in _json_body(recorder.requests[0])
 
 
+def test_renew_lease_posts_heartbeat_without_changing_stage() -> None:
+    recorder = _Recorder([httpx.Response(200, json={"ok": True})])
+    api = _make_client(recorder.handler)
+    api.renew_lease("j1", stage="TRANSCRIBING", progress=0)
+    request = recorder.requests[0]
+    assert request.method == "POST"
+    assert request.url.path == "/api/worker/jobs/j1/heartbeat"
+    assert _json_body(request) == {"stage": "TRANSCRIBING", "progress": 0}
+
+
 def test_stage_result_posts_full_payload() -> None:
     recorder = _Recorder([httpx.Response(200, json={"ok": True})])
     api = _make_client(recorder.handler)

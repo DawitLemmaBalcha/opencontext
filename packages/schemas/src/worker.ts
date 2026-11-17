@@ -56,6 +56,14 @@ export const WorkerProgressRequestSchema = z.object({
 
 export type WorkerProgressRequest = z.infer<typeof WorkerProgressRequestSchema>;
 
+/** POST /api/worker/jobs/[id]/heartbeat */
+export const WorkerHeartbeatRequestSchema = z.object({
+  stage: StageNameSchema,
+  progress: z.number().int().min(0).max(100),
+});
+
+export type WorkerHeartbeatRequest = z.infer<typeof WorkerHeartbeatRequestSchema>;
+
 /** POST /api/worker/jobs/[id]/artifacts (multipart fields besides `file`). */
 export const WorkerArtifactFieldsSchema = z.object({
   kind: MediaKindSchema,

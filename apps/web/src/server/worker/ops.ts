@@ -73,6 +73,16 @@ export async function applyProgress(
   });
 }
 
+/** POST /api/worker/jobs/[id]/heartbeat — renew the lease without rewriting stage state. */
+export async function applyHeartbeat(job: Job): Promise<Job> {
+  return prisma.job.update({
+    where: { id: job.id },
+    data: {
+      leaseUntil: new Date(Date.now() + LEASE_MS),
+    },
+  });
+}
+
 /**
  * POST /api/worker/jobs/[id]/stage-result — idempotent upsert per stage
  * (blueprint §4 resume idempotency). Routes `data` into the dedicated

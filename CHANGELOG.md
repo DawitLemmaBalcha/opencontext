@@ -5,6 +5,8 @@ All notable changes are documented here. The project follows
 
 ## Unreleased
 
+- Added a worker lease heartbeat so long transcription and vision stages keep
+  their queue claim, and made the worker container run as an unprivileged user.
 - Added PNG, JPEG, and WebP image inputs, including ordered sets of up to 10
   images. Upload completion validates each object before creating one job, and
   the worker adds cross-image text and UI changes to the Markdown and JSON

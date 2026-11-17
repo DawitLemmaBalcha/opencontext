@@ -6,6 +6,7 @@ Endpoint field names are confirmed against the web route files under
 - POST /api/worker/jobs/claim          body {workerId}     200 {job, source} | 204 idle
 - GET  /api/worker/jobs/{id}/source                         200 {uri, provider, sizeBytes, filename}
 - POST /api/worker/jobs/{id}/progress  body {stage, stageStatus, progress, message?}
+- POST /api/worker/jobs/{id}/heartbeat body {stage, progress}
 - POST /api/worker/jobs/{id}/artifacts multipart file + kind (AUDIO|FRAME) + timestampSec
 - POST /api/worker/jobs/{id}/stage-result body {stage, outcome, attempt, error?, reason?, data?}
 - POST /api/worker/jobs/{id}/complete  (no body)
@@ -227,6 +228,14 @@ class ApiClient:
         if message is not None:
             payload["message"] = message
         return self._request("POST", f"/api/worker/jobs/{job_id}/progress", json=payload)
+
+    def renew_lease(self, job_id: str, *, stage: str, progress: int) -> dict[str, Any]:
+        """Renew a claimed job's lease without changing its stage state."""
+        return self._request(
+            "POST",
+            f"/api/worker/jobs/{job_id}/heartbeat",
+            json={"stage": stage, "progress": progress},
+        )
 
     def upload_artifact(
         self,

@@ -2,9 +2,9 @@ import { prisma } from "@/server/db/prisma";
 
 /**
  * Queue constants (ADR-0001). The lease is the visibility timeout:
- * workers renew it on every progress report; an expired lease makes the
- * job claimable again (the claim query itself handles re-release — no
- * sweep needed).
+ * workers renew it on every progress report and through a periodic heartbeat;
+ * an expired lease makes the job claimable again (the claim query itself
+ * handles re-release — no sweep needed).
  */
 export const LEASE_MS = 5 * 60 * 1000;
 export const BACKOFF_MS = [2_000, 8_000] as const;

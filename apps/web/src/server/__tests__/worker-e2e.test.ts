@@ -7,6 +7,7 @@ import {
   WorkerArtifactFieldsSchema,
   WorkerClaimRequestSchema,
   WorkerFailRequestSchema,
+  WorkerHeartbeatRequestSchema,
   WorkerProgressRequestSchema,
   WorkerStageResultRequestSchema,
 } from "@opencontext/schemas";
@@ -21,7 +22,13 @@ import { POST as uploadBatchCompletePost } from "@/app/api/uploads/batch/complet
 import { prisma } from "@/server/db/prisma";
 import { storage } from "@/server/storage";
 import { jobToDetail } from "@/server/jobs";
-import { applyProgress, applyStageResult, getWorkerSourceInfo, storeArtifact } from "@/server/worker";
+import {
+  applyHeartbeat,
+  applyProgress,
+  applyStageResult,
+  getWorkerSourceInfo,
+  storeArtifact,
+} from "@/server/worker";
 import { claimJob, completeJob, failJob } from "@/server/queue";
 import { createUser, resetDatabase, resetStorage } from "./helpers";
 import { findWorkerPython, REPO_ROOT, workerPythonEnv } from "./python-process";
@@ -130,6 +137,12 @@ function createWorkerServer() {
       if (req.method === "POST" && pathname.endsWith("/progress")) {
         const input = WorkerProgressRequestSchema.parse(await readJson(req));
         respond(res, 200, await applyProgress(await runningJob(jobId), input));
+        return;
+      }
+      if (req.method === "POST" && pathname.endsWith("/heartbeat")) {
+        const input = WorkerHeartbeatRequestSchema.parse(await readJson(req));
+        WorkerHeartbeatRequestSchema.parse(input);
+        respond(res, 200, await applyHeartbeat(await runningJob(jobId)));
         return;
       }
       if (req.method === "POST" && pathname.endsWith("/artifacts")) {

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -65,6 +66,7 @@ NOT_A_PDF_MESSAGE = "This file is not a valid PDF"
 TOO_LONG_MESSAGE = "Video is longer than the 30-minute limit"
 NO_AUDIO_REASON = "NO_AUDIO"
 VISION_CONCURRENCY = 2
+LEASE_HEARTBEAT_SECONDS = 60.0
 
 # Injectable ffmpeg entry points (tests substitute fakes).
 ProbeFn = Callable[[str], dict[str, Any]]
@@ -141,6 +143,8 @@ class Pipeline:
             )
         )
         self._current_stage = "EXTRACTING"
+        self._heartbeat_stop: threading.Event | None = None
+        self._heartbeat_thread: threading.Thread | None = None
 
     # -- helpers ----------------------------------------------------------
 
@@ -153,6 +157,44 @@ class Pipeline:
     def _attempt(self, job: dict[str, Any], stage: str) -> int:
         previous = self._stage_state(job, stage).get("attempt") or 0
         return int(previous) + 1
+
+    def _heartbeat_loop(self, job_id: str, stop: threading.Event) -> None:
+        while not stop.wait(LEASE_HEARTBEAT_SECONDS):
+            try:
+                self.api.renew_lease(
+                    job_id,
+                    stage=self._current_stage,
+                    progress=0,
+                )
+            except (PermanentFailure, TransientFailure) as exc:
+                log.warning(
+                    "job=%s stage=%s lease_heartbeat_error=%s",
+                    job_id,
+                    self._current_stage,
+                    exc,
+                )
+
+    def _start_heartbeat(self, job_id: str) -> None:
+        stop = threading.Event()
+        thread = threading.Thread(
+            target=self._heartbeat_loop,
+            args=(job_id, stop),
+            name=f"lease-heartbeat-{job_id}",
+            daemon=True,
+        )
+        self._heartbeat_stop = stop
+        self._heartbeat_thread = thread
+        thread.start()
+
+    def _stop_heartbeat(self) -> None:
+        stop = self._heartbeat_stop
+        thread = self._heartbeat_thread
+        self._heartbeat_stop = None
+        self._heartbeat_thread = None
+        if stop is not None:
+            stop.set()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=5)
 
     def _done(self, job: dict[str, Any], stage: str) -> bool:
         return self._stage_state(job, stage).get("status") in ("SUCCEEDED", "SKIPPED")
@@ -603,6 +645,7 @@ class Pipeline:
         job_id = job["id"]
         detail_level = DetailLevel(str(job.get("detailLevel") or "MEDIUM").upper())
         started = time.monotonic()
+        self._start_heartbeat(job_id)
         try:
             with tempfile.TemporaryDirectory(
                 prefix="oc-worker-", ignore_cleanup_errors=True
@@ -630,6 +673,8 @@ class Pipeline:
         except TransientFailure as exc:
             self._fail(job_id, str(exc), "TRANSIENT", retryable=True)
             return "failed"
+        finally:
+            self._stop_heartbeat()
         elapsed = time.monotonic() - started
         log.info("job=%s status=completed duration=%.1fs", job_id, elapsed)
         return "completed"

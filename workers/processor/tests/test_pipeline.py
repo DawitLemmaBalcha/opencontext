@@ -7,6 +7,7 @@ complete path, and Permanent/Transient failure-to-fail mapping.
 """
 
 import json
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -256,6 +257,66 @@ def _extract_pdf_ok() -> Callable[[str, str], list[dict]]:
         return pages
 
     return extract_pdf
+
+
+def test_lease_heartbeat_runs_during_work_and_stops_after_job() -> None:
+    calls = 0
+    heartbeat_sent = threading.Event()
+    stop_observed = threading.Event()
+
+    class Api:
+        def renew_lease(self, job_id: str, *, stage: str, progress: int) -> dict:
+            nonlocal calls
+            calls += 1
+            assert (job_id, stage, progress) == (JOB_ID, "TRANSCRIBING", 0)
+            heartbeat_sent.set()
+            return {}
+
+    class Stop(threading.Event):
+        def wait(self, timeout: float | None = None) -> bool:
+            assert timeout == pipeline_module.LEASE_HEARTBEAT_SECONDS
+            if calls:
+                stop_observed.set()
+                return True
+            return False
+
+    pipeline = Pipeline.__new__(Pipeline)
+    pipeline.api = Api()
+    pipeline._current_stage = "TRANSCRIBING"
+    pipeline._heartbeat_stop = Stop()
+    pipeline._heartbeat_thread = threading.Thread(
+        target=pipeline._heartbeat_loop,
+        args=(JOB_ID, pipeline._heartbeat_stop),
+    )
+    pipeline._heartbeat_thread.start()
+    assert heartbeat_sent.wait(timeout=1)
+    pipeline._stop_heartbeat()
+    assert stop_observed.is_set()
+    assert calls == 1
+    assert pipeline._heartbeat_thread is None
+
+
+def test_lease_heartbeat_survives_a_temporary_api_failure() -> None:
+    calls = 0
+
+    class Api:
+        def renew_lease(self, job_id: str, *, stage: str, progress: int) -> dict:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise TransientFailure("temporary outage")
+            return {}
+
+    class Stop(threading.Event):
+        def wait(self, timeout: float | None = None) -> bool:
+            return calls >= 2
+
+    pipeline = Pipeline.__new__(Pipeline)
+    pipeline.api = Api()
+    pipeline._current_stage = "ANALYZING"
+    pipeline._heartbeat_loop(JOB_ID, Stop())
+
+    assert calls == 2
 
 
 def _make_pipeline(

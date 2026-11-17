@@ -173,6 +173,16 @@ Use a process supervisor or container restart policy. Run one worker with
 `--once` for cron-style execution or long-running workers with
 `WORKER_CONCURRENCY` set to the host capacity.
 
+The worker renews each claimed job's lease every minute, independently of
+stage progress reports. If the API is temporarily unavailable, it retries the
+heartbeat on the next interval. A terminated worker stops renewing, so the job
+becomes claimable again after the five-minute lease expires.
+
+The worker image runs as UID 10001 with `HF_HOME=/models`. Mount a persistent
+volume at `/models` to retain downloaded transcription models across restarts.
+Configure the host to restart the container on failure and allow at least two
+minutes for graceful shutdown so an in-flight job can finish.
+
 ### Hosted worker options
 
 A long-running background worker on Render, Railway, Fly.io, or a container
