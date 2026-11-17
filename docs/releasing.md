@@ -12,12 +12,21 @@ npm version, and Python version match before building.
 ## Protected publishing
 
 `.github/workflows/release.yml` runs on `v*` tags. Publishing jobs use GitHub
-Environments named `pypi` and `npm`. Configure both environments with required
-reviewers in repository settings. A pushed tag therefore builds and verifies
-the release without publishing until a reviewer approves the environment.
+Environments named `pypi` and `npm`. A pushed tag therefore builds and verifies
+the release without publishing until an environment is approved manually.
 
 - PyPI uses Trusted Publishing through GitHub OIDC; no PyPI token is stored.
 - npm requires an `NPM_TOKEN` repository secret and publishes with provenance.
+
+Before the first release:
+
+1. In PyPI, add a pending Trusted Publisher for `opencontext-video` with
+   owner `kylosonic`, repository `opencontext`, workflow `release.yml`, and
+   environment `pypi`.
+2. Create an npm granular access token that can publish `@opencontext/schemas`
+   and its `opencontext` scope. Store it as the repository secret `NPM_TOKEN`.
+3. In repository Settings → Environments, add required reviewers to `pypi` and
+   `npm`. This is the human approval gate for publishing.
 
 ## Release checklist
 
