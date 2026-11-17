@@ -1,6 +1,6 @@
 # Project Status
 
-Last verified: 2026-11-16
+Last verified: 2026-11-17
 
 This page describes the repository and verification evidence, not a guarantee
 about the current Vercel deployment or future releases.
@@ -107,6 +107,10 @@ The worker currently drains the queue from
 `.github/workflows/worker-schedule.yml` every five minutes. It is a real worker,
 not a simulation, but job start latency is up to one cron interval.
 
+The worker renews each claimed job's lease every minute so long stages do not
+lose their claim between progress updates. CI verifies the heartbeat through
+the non-root worker container and the Compose upload-to-export flow.
+
 ## Known gaps
 
 - Published quality evidence covers one synthetic visual flow and one clean
@@ -114,6 +118,10 @@ not a simulation, but job start latency is up to one cron interval.
   accuracy, noisy audio performance, or behavior on real application
   recordings.
 - Packages are not published.
+- The first release still needs a PyPI pending Trusted Publisher, the
+  `NPM_TOKEN` repository secret, and approval in the protected `pypi` and `npm`
+  environments. Both packages build, pass registry-format checks, and install
+  from their local artifacts.
 - Eight moderate npm advisories remain in the TypeScript ESLint development
   toolchain; no high or critical advisories remain.
 - No sustained high-traffic test against the deployed HTTP service or
