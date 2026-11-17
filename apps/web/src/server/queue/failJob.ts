@@ -1,5 +1,5 @@
 import type { Job } from "@prisma/client";
-import { type StageState } from "@opencontext/schemas";
+import { type StageState } from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import { computeProgress } from "@/server/jobs/progress";
 import { requeueJob, transientBudgetExhausted } from "./requeueJob";

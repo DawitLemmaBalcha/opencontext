@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { FailureKindSchema, StageNameSchema, StageStatusSchema } from "./job.js";
+import {
+  FailureKindSchema,
+  SourceKindSchema,
+  StageNameSchema,
+  StageStatusSchema,
+} from "./job.js";
 import { MediaKindSchema } from "./media.js";
 
 /**
@@ -22,6 +27,21 @@ export const WorkerSourceInfoSchema = z.object({
   provider: z.enum(["local", "s3"]),
   sizeBytes: z.number().int().nonnegative(),
   filename: z.string(),
+  kind: SourceKindSchema,
+  assets: z
+    .array(
+      z.object({
+        uri: z.string(),
+        provider: z.enum(["local", "s3"]),
+        sizeBytes: z.number().int().nonnegative(),
+        filename: z.string(),
+        kind: SourceKindSchema,
+        ext: z.string(),
+        mime: z.string(),
+        order: z.number().int().nonnegative(),
+      }),
+    )
+    .optional(),
 });
 
 export type WorkerSourceInfo = z.infer<typeof WorkerSourceInfoSchema>;
@@ -35,6 +55,14 @@ export const WorkerProgressRequestSchema = z.object({
 });
 
 export type WorkerProgressRequest = z.infer<typeof WorkerProgressRequestSchema>;
+
+/** POST /api/worker/jobs/[id]/heartbeat */
+export const WorkerHeartbeatRequestSchema = z.object({
+  stage: StageNameSchema,
+  progress: z.number().int().min(0).max(100),
+});
+
+export type WorkerHeartbeatRequest = z.infer<typeof WorkerHeartbeatRequestSchema>;
 
 /** POST /api/worker/jobs/[id]/artifacts (multipart fields besides `file`). */
 export const WorkerArtifactFieldsSchema = z.object({

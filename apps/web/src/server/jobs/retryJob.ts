@@ -1,4 +1,4 @@
-import { type StageState } from "@opencontext/schemas";
+import { type StageState } from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import { computeProgress } from "./progress";
 import { jobToDetail } from "./serialize";
@@ -79,6 +79,9 @@ export async function retryJob(jobId: string, userId: string): Promise<RetryResu
       attempts: 0,
     },
   });
+  const sourceMedia = await prisma.media.findMany({
+    where: { jobId, kind: "SOURCE" },
+  });
 
-  return { kind: "OK", job: jobToDetail(updated) };
+  return { kind: "OK", job: jobToDetail(updated, sourceMedia) };
 }

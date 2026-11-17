@@ -12,11 +12,14 @@ import { Section } from "@/components/ui/section";
 export const metadata: Metadata = {
   title: "Docs — OpenContext",
   description:
-    "How OpenContext turns video into structured context for text-only AI agents.",
+    "How OpenContext turns video and images into structured context for text-only AI agents.",
 };
 
 const PIPELINE_STEPS = [
-  { label: "Video", detail: "Upload a recording or screen capture." },
+  {
+    label: "Media",
+    detail: "Upload a recording, screen capture, or still image.",
+  },
   {
     label: "Audio + Frames",
     detail: "Extract audio and sample representative frames.",
@@ -120,7 +123,7 @@ export default function DocsPage() {
           id="what"
           kicker="Overview"
           title="What OpenContext does"
-          description="OpenContext is an open-source context engine: videos and screen recordings go in, an evidence-linked, timestamped handoff comes out — readable by any text-only model."
+          description="OpenContext is an open-source context engine: videos, screen recordings, and images go in; an evidence-linked handoff comes out, readable by any text-only model."
           flush
         >
           <div className="grid gap-4 md:grid-cols-2">

@@ -22,7 +22,7 @@ OpenContext is a developer tool. Creating and viewing jobs requires a GitHub acc
 - **Expected outcome:** a signed-in session; the app header shows the account identity; the user is returned to the page they were trying to reach (or the app home if sign-in was voluntary)
 - **Failure outcome:** if authorization fails (e.g., provider unavailable), the user stays on the previous page and sees a clear message that sign-in did not complete; nothing half-created remains
 - **Edge cases:** a GitHub account without visible email must not break sign-in
-- **Acceptance:** from a signed-out state, open the app home → click "Analyze a Video" → complete GitHub consent → land back on the new-job page, signed in
+- **Acceptance:** from a signed-out state, open the app home → click "Analyze Media" → complete GitHub consent → land back on the new-job page, signed in
 
 ## B3 — Canceled sign-in
 

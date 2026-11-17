@@ -2,7 +2,8 @@
 
 Status: IMPLEMENTED — SEE docs/status.md FOR VERIFICATION SCOPE
 
-A job is the user's unit of work: one uploaded video and everything produced from it.
+A job is the user's unit of work: one uploaded video or PDF, or one ordered
+image set, and everything produced from it.
 
 ## B1 — Job states
 

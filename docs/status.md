@@ -1,23 +1,27 @@
 # Project Status
 
-Last verified: 2026-11-09
+Last verified: 2026-11-17
 
 This page describes the repository and verification evidence, not a guarantee
 about the current Vercel deployment or future releases.
 
 ## Verified in the repository
 
-- Web lint, typecheck, and production build pass. The local suite reports 123
-  passed plus one opt-in S3 integration skip; CI runs that integration and
-  passes all web tests.
-- Worker Ruff and pytest pass in CI; real Tesseract and OpenCode Go vision/audio
-  smoke tests are skipped unless their binaries/credentials and opt-in flags
-  are present.
+- Web lint, typecheck, production build, and the complete local suite pass. The
+  local suite reports 142 passed plus one opt-in S3 integration skip; CI runs
+  that integration and passes all web tests.
+- Worker Ruff and all 249 local tests pass, with three environment-dependent
+  skips. Real Tesseract and OpenCode Go vision/audio smoke tests run when their
+  binaries or stored credentials and opt-in flags are present.
 - A manual local smoke test produced a real Faster Whisper transcript from
   generated speech with no cloud credentials.
 - OpenCode Go `glm-5.3-flash` completed a real hosted-vision analysis of the
   generated fixture, producing 19 evidence records. The raw Markdown and JSON
   are published under `docs/evaluation/` and labeled as smoke evidence.
+- The current opt-in OpenCode Go `glm-5.3-flash` smoke passed against a
+  generated checkout-reference image through the full image pipeline. The test
+  requires at least two expected UI or OCR labels and also confirms that the
+  provider advertises image input.
 - A measured OpenCode Go `glm-5.3-flash` run over a generated three-state UI
   flow matched all four expected OCR lines and all seven visual keywords,
   producing 70 evidence records. The input, configuration, raw context,
@@ -32,14 +36,19 @@ about the current Vercel deployment or future releases.
 - Generated-video test performs direct upload, queue claim, worker HTTP calls,
   real FFmpeg extraction, fixture transcription/vision, evidence persistence,
   and Markdown/JSON export.
+- Generated image-set coverage verifies ordered uploads, cross-image context,
+  vision/OCR output, and evidence-linked exports.
+- Generated PDF coverage verifies upload and preview, page rendering, embedded
+  text extraction, page count persistence, vision output, and exports across
+  the web API and Python worker.
 - SQLite migration chain matches the Prisma schema.
 - PostgreSQL applies the checked-in migration baseline to a fresh database in
   CI, with no schema drift.
 - S3-compatible integration covers presigned upload, metadata verification,
   move, job completion, and presigned worker download.
-- Upload cancellation, batch CLI analysis, provider diagnostics, shared
-  database rate limiting, PostgreSQL migrations, and keyboard accessibility
-  have focused tests.
+- Upload cancellation and partial-set cleanup, batch CLI analysis, provider
+  diagnostics, shared database rate limiting, PostgreSQL migrations, and
+  keyboard accessibility have focused tests.
 - A PostgreSQL load test with six independent processes and 150 synchronized
   requests per round allowed exactly 37 requests on each fresh key and
   persisted exactly 37 slots across four rounds. The raw result and limits are
@@ -58,8 +67,9 @@ about the current Vercel deployment or future releases.
   collections, timestamps, and timeline before regenerating an implementation
   brief. CI replays the published 70-record OpenCode context without media,
   provider credentials, or network access.
-- The `opencontext-mcp` stdio server exposes local video analysis, implementation
-  brief generation, and bounded evidence lookup to coding agents.
+- The `opencontext-mcp` stdio server exposes local video and image analysis,
+  implementation brief generation, and bounded evidence lookup to coding
+  agents.
 - `opencontext evaluate` computes transcript WER/CER, OCR precision/recall/F1,
   and visual keyword recall against a versioned synthetic dataset, while keeping
   fixture baselines, smoke tests, and measured model runs separately labeled.
@@ -97,6 +107,10 @@ The worker currently drains the queue from
 `.github/workflows/worker-schedule.yml` every five minutes. It is a real worker,
 not a simulation, but job start latency is up to one cron interval.
 
+The worker renews each claimed job's lease every minute so long stages do not
+lose their claim between progress updates. CI verifies the heartbeat through
+the non-root worker container and the Compose upload-to-export flow.
+
 ## Known gaps
 
 - Published quality evidence covers one synthetic visual flow and one clean
@@ -104,6 +118,10 @@ not a simulation, but job start latency is up to one cron interval.
   accuracy, noisy audio performance, or behavior on real application
   recordings.
 - Packages are not published.
+- The first release still needs a PyPI pending Trusted Publisher, the
+  `NPM_TOKEN` repository secret, and approval in the protected `pypi` and `npm`
+  environments. Both packages build, pass registry-format checks, and install
+  from their local artifacts.
 - Eight moderate npm advisories remain in the TypeScript ESLint development
   toolchain; no high or critical advisories remain.
 - No sustained high-traffic test against the deployed HTTP service or

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ReadinessResponseSchema } from "@opencontext/schemas";
+import { ReadinessResponseSchema } from "@kylosonic/opencontext-schemas";
 import { GET } from "@/app/api/health/ready/route";
 import { deploymentEnvironment, evaluateReadiness } from "@/server/readiness";
 

@@ -2,7 +2,7 @@
 
 OpenContext exposes its evidence-linked context through a local stdio MCP
 server. The server is designed for coding agents that can read files but cannot
-inspect video directly.
+inspect video or images directly.
 
 ## Install
 
@@ -35,16 +35,20 @@ plumbing only.
 
 ## Tools
 
-### `analyze_video`
+### `analyze_media`
 
-Analyzes a local video and returns a repository-aware implementation brief.
+Analyzes a local video or image and returns a repository-aware implementation
+brief.
 Inputs:
 
-- `video_path`
+- `media_path`
 - `repository_path` (optional)
 - `task` (optional)
 - `detail_level`: `LOW`, `MEDIUM`, or `HIGH`
 - `offline`: boolean
+
+`analyze_video` and `analyze_image` are explicit compatibility entry points
+with the same options.
 
 ### `implementation_brief`
 

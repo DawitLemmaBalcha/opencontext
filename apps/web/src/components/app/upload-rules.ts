@@ -2,28 +2,37 @@
  * Client-side pre-flight checks for the upload form (upload.md B1).
  *
  * The SERVER validation (`src/server/validation/upload.ts`, driven by
- * `@opencontext/schemas` UPLOAD_LIMITS) is authoritative — the 4xx error
+ * `@kylosonic/opencontext-schemas` UPLOAD_LIMITS) is authoritative — the 4xx error
  * envelope always wins. These mirrored rules exist only for instant
  * feedback before bytes leave the browser, so they must keep the same
  * messages and limits. Any drift produces a server-side rejection that
  * the form displays verbatim.
  */
 
-export const ALLOWED_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv"] as const;
+import { sourceKindForExtension, UPLOAD_LIMITS } from "@kylosonic/opencontext-schemas";
+
+export const ALLOWED_EXTENSIONS = UPLOAD_LIMITS.allowedExtensions;
 export const MAX_BYTES = 500 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = UPLOAD_LIMITS.maxImageBytes;
+export const MAX_PDF_BYTES = UPLOAD_LIMITS.maxPdfBytes;
+export const MAX_IMAGE_COUNT = UPLOAD_LIMITS.maxImageCount;
 /** upload.md B1 wording for the size limit chip. */
 export const MAX_SIZE_LABEL = "500 MB";
+export const MAX_IMAGE_SIZE_LABEL = "25 MB";
+export const MAX_PDF_SIZE_LABEL = "50 MB";
 /** upload.md B2: stated pre-upload; enforced by the EXTRACTING probe. */
 export const MAX_DURATION_LABEL = "30 minutes";
 
 /** Mirrors src/server/validation/upload.ts wording exactly. */
 export const FORMAT_MESSAGE =
-  "This format is not supported — use MP4, MOV, WebM, or MKV";
+  "This format is not supported — use MP4, MOV, WebM, MKV, PNG, JPG, JPEG, WebP, or PDF";
 /** Mirrors src/server/validation/upload.ts wording exactly. */
 export const SIZE_MESSAGE = "File is too large — the limit is 500 MB";
+export const IMAGE_SIZE_MESSAGE = "Image is too large — the limit is 25 MB";
+export const PDF_SIZE_MESSAGE = "PDF is too large — the limit is 50 MB";
 
 export type ClientFileCheck =
-  | { ok: true; extension: string }
+  | { ok: true; extension: string; kind: "video" | "image" | "pdf" }
   | { ok: false; message: string };
 
 /** Mirror of validateUpload(filename, size) for instant client feedback. */
@@ -37,9 +46,6 @@ export function checkFileBeforeUpload(
   if (sizeBytes === 0) {
     return { ok: false, message: "The file is empty" };
   }
-  if (sizeBytes > MAX_BYTES) {
-    return { ok: false, message: SIZE_MESSAGE };
-  }
   const dot = filename.lastIndexOf(".");
   if (dot <= 0 || dot === filename.length - 1) {
     return { ok: false, message: FORMAT_MESSAGE };
@@ -48,7 +54,22 @@ export function checkFileBeforeUpload(
   if (!(ALLOWED_EXTENSIONS as readonly string[]).includes(extension)) {
     return { ok: false, message: FORMAT_MESSAGE };
   }
-  return { ok: true, extension: extension.slice(1) };
+  const normalizedExtension = extension.slice(1);
+  const kind = sourceKindForExtension(normalizedExtension);
+  const limit =
+    kind === "image" ? MAX_IMAGE_BYTES : kind === "pdf" ? MAX_PDF_BYTES : MAX_BYTES;
+  if (sizeBytes > limit) {
+    return {
+      ok: false,
+      message:
+        kind === "image"
+          ? IMAGE_SIZE_MESSAGE
+          : kind === "pdf"
+            ? PDF_SIZE_MESSAGE
+            : SIZE_MESSAGE,
+    };
+  }
+  return { ok: true, extension: normalizedExtension, kind };
 }
 
 /** Human file size, e.g. "24.3 MB". */

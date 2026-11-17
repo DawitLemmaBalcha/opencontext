@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { workerApiToken } from "@opencontext/config";
-import { ERROR_STATUS, type ErrorCode } from "@opencontext/schemas";
+import { ERROR_STATUS, type ErrorCode } from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 
 /** Worker id header carried by every job-scoped worker request. */

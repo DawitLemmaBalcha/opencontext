@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { UploadIntentRequestSchema } from "@opencontext/schemas";
+import { UploadIntentRequestSchema } from "@kylosonic/opencontext-schemas";
 import { auth } from "@/auth";
 import { errorResponse, withErrorHandling } from "@/server/api-helpers";
 import { consumeRateLimit } from "@/server/security/rate-limit";

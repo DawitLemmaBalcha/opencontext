@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { type StageState } from "@opencontext/schemas";
+import { type StageState } from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import { BACKOFF_MS, QUEUE_MAX_ATTEMPTS } from "./claimJob";
 

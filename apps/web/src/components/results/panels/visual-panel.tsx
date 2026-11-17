@@ -58,7 +58,7 @@ export function VisualPanel({
             <Card className="space-y-3" padded>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-xs text-ink-faint">
-                  {formatClock(observation.timestampSec)}
+                  {observation.frameId ?? formatClock(observation.timestampSec)}
                 </span>
                 <Badge tone={certainty.tone} mono>
                   {certainty.label}

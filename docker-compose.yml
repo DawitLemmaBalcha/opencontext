@@ -72,6 +72,8 @@ services:
       HF_HOME: /models
     volumes:
       - whisper-models:/models
+    restart: unless-stopped
+    stop_grace_period: 2m
     depends_on:
       web:
         condition: service_healthy

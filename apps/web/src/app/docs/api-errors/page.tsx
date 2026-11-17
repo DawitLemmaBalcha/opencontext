@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ERROR_CATALOG, ERROR_CODES } from "@opencontext/schemas";
+import { ERROR_CATALOG, ERROR_CODES } from "@kylosonic/opencontext-schemas";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Container } from "@/components/ui/container";

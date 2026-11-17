@@ -42,7 +42,7 @@ export default async function JobsPage() {
                   Your jobs
                 </h1>
                 <p className="mt-3 max-w-xl text-base leading-relaxed text-ink-muted">
-                  Every analysis starts as one uploaded video and ends as a
+                  Every analysis starts as one uploaded video or image and ends as a
                   structured developer context document.
                 </p>
               </div>

@@ -1,4 +1,4 @@
-import type { DetailLevel } from "@opencontext/schemas";
+import type { DetailLevel } from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import { storage } from "@/server/storage";
 import { initialStageStates } from "./progress";
@@ -16,6 +16,21 @@ export interface CreateJobInput {
   tempKey: string;
 }
 
+export interface CreateJobSource {
+  extension: string;
+  sizeBytes: number;
+  mime: string;
+  tempKey: string;
+  filename: string;
+}
+
+export interface CreateJobSourcesInput {
+  userId: string;
+  displayName: string;
+  detailLevel: DetailLevel;
+  sources: CreateJobSource[];
+}
+
 /**
  * Upload commit sequence (blueprint §3 B3): create Job + SOURCE Media and
  * move the temp object to its final key inside one transaction. Any failure
@@ -23,7 +38,35 @@ export interface CreateJobInput {
  * enters processing. Final key: `jobs/{jobId}/source.{ext}`.
  */
 export async function createJob(input: CreateJobInput) {
+  return createJobSources({
+    userId: input.userId,
+    displayName: input.displayName,
+    detailLevel: input.detailLevel,
+    sources: [
+      {
+        filename: input.displayName,
+        extension: input.sourceExt,
+        sizeBytes: input.sourceSize,
+        mime: input.sourceMime,
+        tempKey: input.tempKey,
+      },
+    ],
+  });
+}
+
+/**
+ * Commit one or more source objects as one ordered job. The first source
+ * remains the legacy primary `Job.source*` value while every source gets a
+ * SOURCE Media row. This keeps existing single-video jobs compatible and
+ * lets image sets share one analysis and context.
+ */
+export async function createJobSources(input: CreateJobSourcesInput) {
+  if (input.sources.length === 0) {
+    throw new Error("A job requires at least one source");
+  }
   const stageStates = initialStageStates();
+  const primary = input.sources[0];
+  const finalizedKeys: string[] = [];
   try {
     const job = await prisma.$transaction(async (tx) => {
       const created = await tx.job.create({
@@ -33,36 +76,47 @@ export async function createJob(input: CreateJobInput) {
           detailLevel: input.detailLevel,
           status: "QUEUED",
           stageStates,
-          sourceSize: input.sourceSize,
-          sourceExt: input.sourceExt,
+          sourceSize: primary.sizeBytes,
+          sourceExt: primary.extension,
+          assetCount: input.sources.length,
         },
       });
 
-      const finalKey = `jobs/${created.id}/source.${input.sourceExt}`;
-
-      await tx.media.create({
-        data: {
-          jobId: created.id,
-          kind: "SOURCE",
-          key: finalKey,
-          mime: input.sourceMime,
-          sizeBytes: input.sourceSize,
-        },
-      });
-
-      // Storage move inside the transaction: a failure here rolls the DB
-      // rows back so no job can reference a missing source object.
-      await storage.move(input.tempKey, finalKey);
-
+      const finalKeys: string[] = [];
+      for (let index = 0; index < input.sources.length; index += 1) {
+        const source = input.sources[index];
+        const finalKey =
+          input.sources.length === 1
+            ? `jobs/${created.id}/source.${source.extension}`
+            : `jobs/${created.id}/sources/${String(index + 1).padStart(2, "0")}.${source.extension}`;
+        await tx.media.create({
+          data: {
+            jobId: created.id,
+            kind: "SOURCE",
+            key: finalKey,
+            mime: source.mime,
+            sizeBytes: source.sizeBytes,
+            timestampSec: index,
+          },
+        });
+        await storage.move(source.tempKey, finalKey);
+        finalKeys.push(finalKey);
+        finalizedKeys.push(finalKey);
+      }
       return tx.job.update({
         where: { id: created.id },
-        data: { sourceKey: finalKey },
+        data: { sourceKey: finalKeys[0] },
       });
     });
     return job;
   } catch (error) {
-    // Best-effort temp cleanup; the transaction already rolled back.
-    await storage.delete(input.tempKey).catch(() => undefined);
+    // Best-effort cleanup for both unmoved intents and generated final keys.
+    await Promise.all([
+      ...input.sources.map((source) =>
+        storage.delete(source.tempKey).catch(() => undefined),
+      ),
+      ...finalizedKeys.map((key) => storage.delete(key).catch(() => undefined)),
+    ]);
     throw error;
   }
 }

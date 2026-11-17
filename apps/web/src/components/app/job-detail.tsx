@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import type { JobDetail } from "@opencontext/schemas";
+import type { JobDetail } from "@kylosonic/opencontext-schemas";
 import { formatClock } from "@/components/results/format";
 import { JobHeader } from "@/components/results/job-header";
 import { ResultViewer } from "@/components/results/result-viewer";
@@ -32,6 +32,7 @@ import {
   postJobRetry,
 } from "./api-client";
 import { ConfirmDialog } from "./confirm-dialog";
+import { SourceGallery } from "./source-gallery";
 
 /**
  * Job detail page shell (jobs.md B1-B6, B9, B10; results.md B2-B4).
@@ -63,17 +64,17 @@ export interface JobDetailClientProps {
   detail: JobDetail;
   /** Composed results-shell payload; present only when terminal. */
   resultView: AnalysisResultView | null;
-  /** Presigned source URL when this deployment can stream media. */
-  videoUrl: string | null;
-  /** Honest note when the source video cannot be streamed back. */
-  videoUnavailableNote?: string | null;
+  /** Presigned video URL or owner-authenticated image URL. */
+  sourceUrl: string | null;
+  /** Honest note when the source media cannot be streamed back. */
+  sourceUnavailableNote?: string | null;
 }
 
 export function JobDetailClient({
   detail: initialDetail,
   resultView: initialResultView,
-  videoUrl,
-  videoUnavailableNote = null,
+  sourceUrl,
+  sourceUnavailableNote = null,
 }: JobDetailClientProps) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -89,7 +90,7 @@ export function JobDetailClient({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [videoBroken, setVideoBroken] = useState(false);
+  const [sourceBroken, setSourceBroken] = useState(false);
   const [selectedTimestamp, setSelectedTimestamp] = useState<number | null>(null);
   const [now, setNow] = useState<number | null>(() => Date.now());
 
@@ -169,11 +170,13 @@ export function JobDetailClient({
   );
 
   const playerRank = STAGE_RANK[job.status] ?? 0;
-  const playerVisible =
-    !videoBroken &&
-    videoUrl !== null &&
+  const sourceVisible =
+    !sourceBroken &&
+    sourceUrl !== null &&
     playerRank >= STAGE_RANK.EXTRACTING &&
     job.status !== "FAILED";
+  const sourceKind = job.source?.kind ?? "video";
+  const sourceAssets = job.source?.assets ?? [];
 
   const seekTo = useCallback((timestampSec: number) => {
     setSelectedTimestamp(timestampSec);
@@ -198,7 +201,7 @@ export function JobDetailClient({
       const updated = await postJobRetry(job.id);
       setJob(updated);
       setPreparing(false);
-      setVideoBroken(false);
+      setSourceBroken(false);
     } catch (error) {
       setActionError(
         error instanceof ApiError
@@ -230,21 +233,38 @@ export function JobDetailClient({
 
   const failedStage = job.errorStage ? stageDisplayName(job.errorStage) : null;
 
-  const playerBrokenNote = videoBroken
-    ? "The source video could not be played back - your browser may not support this codec, or the media link is no longer valid. Results and exports are unaffected."
+  const sourceBrokenNote = sourceBroken
+    ? "The source media could not be displayed - the file may use an unsupported codec, or the preview link is no longer valid. Results and exports are unaffected."
     : null;
-  const unavailableNote = playerBrokenNote ?? videoUnavailableNote ?? null;
-  const videoSlot =
-    !videoBroken && videoUrl !== null && playerVisible ? (
-      <video
-        ref={videoRef}
-        src={videoUrl}
-        controls
-        preload="metadata"
-        className="aspect-video w-full bg-black"
-        aria-label="Source video"
-        onError={() => setVideoBroken(true)}
-      />
+  const unavailableNote = sourceBrokenNote ?? sourceUnavailableNote ?? null;
+  const sourceSlot =
+    !sourceBroken && sourceUrl !== null && sourceVisible ? (
+      sourceKind === "image" ? (
+        <SourceGallery
+          sourceUrl={sourceUrl}
+          sourceKind="image"
+          displayName={job.displayName}
+          assetCount={sourceAssets.length}
+          onError={() => setSourceBroken(true)}
+        />
+      ) : sourceKind === "pdf" ? (
+        <SourceGallery
+          sourceUrl={sourceUrl}
+          sourceKind="pdf"
+          displayName={job.displayName}
+          onError={() => setSourceBroken(true)}
+        />
+      ) : (
+        <video
+          ref={videoRef}
+          src={sourceUrl}
+          controls
+          preload="metadata"
+          className="aspect-video w-full bg-black"
+          aria-label="Source video"
+          onError={() => setSourceBroken(true)}
+        />
+      )
     ) : unavailableNote ? (
       <VideoUnavailable
         note={unavailableNote}
@@ -275,13 +295,13 @@ export function JobDetailClient({
               elapsedSec={elapsedNow}
             />
             <p className="mt-4 text-xs leading-relaxed text-ink-faint">
-              Large videos can take a while - this page updates automatically
+              Larger files can take a while - this page updates automatically
               while your job is processing.
             </p>
           </Card>
-          {videoSlot && (
+          {sourceSlot && (
             <div className="overflow-hidden rounded-lg border border-line">
-              {videoSlot}
+              {sourceSlot}
             </div>
           )}
           <ManageCard
@@ -372,9 +392,9 @@ export function JobDetailClient({
             stages={checklist}
             progress={job.progress}
             elapsedSec={elapsedNow}
-            onSeek={seekTo}
+            onSeek={sourceKind === "video" ? seekTo : undefined}
             selectedTimestamp={selectedTimestamp}
-            videoSlot={videoSlot}
+            sourceSlot={sourceSlot}
           />
         </>
       )}
@@ -468,7 +488,7 @@ export function JobDetailClient({
         open={confirmDeleteOpen}
         title={job.displayName}
         heading="Delete this job?"
-        body="The job, its source video, and all of its results will be removed permanently. This cannot be undone."
+        body="The job, its source media, and all of its results will be removed permanently. This cannot be undone."
         busy={deleteBusy}
         error={deleteError}
         confirmLabel="Delete job"

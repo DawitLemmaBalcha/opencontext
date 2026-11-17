@@ -90,7 +90,7 @@ export function JobHeader({ job, demo = false, className }: JobHeaderProps) {
         {active && (
           <div className="flex items-baseline gap-1.5">
             <dt className="label-mono">Status</dt>
-            <dd className="text-ink">Processing — large videos can take a while</dd>
+            <dd className="text-ink">Processing — larger files can take a while</dd>
           </div>
         )}
       </dl>

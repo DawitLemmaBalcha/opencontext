@@ -138,6 +138,16 @@ def test_progress_omits_message_when_none() -> None:
     assert "message" not in _json_body(recorder.requests[0])
 
 
+def test_renew_lease_posts_heartbeat_without_changing_stage() -> None:
+    recorder = _Recorder([httpx.Response(200, json={"ok": True})])
+    api = _make_client(recorder.handler)
+    api.renew_lease("j1", stage="TRANSCRIBING", progress=0)
+    request = recorder.requests[0]
+    assert request.method == "POST"
+    assert request.url.path == "/api/worker/jobs/j1/heartbeat"
+    assert _json_body(request) == {"stage": "TRANSCRIBING", "progress": 0}
+
+
 def test_stage_result_posts_full_payload() -> None:
     recorder = _Recorder([httpx.Response(200, json={"ok": True})])
     api = _make_client(recorder.handler)
@@ -316,6 +326,39 @@ def test_download_source_relative_uri_resolves_against_base(tmp_path) -> None:
     api.download_source("j1", dest)
     assert dest.read_bytes() == b"media-bytes"
     assert paths == ["/api/worker/jobs/j1/source", "/media/video.mp4"]
+
+
+def test_download_sources_preserves_asset_order_and_extensions(tmp_path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/worker/jobs/j1/source":
+            return httpx.Response(
+                200,
+                json={
+                    "uri": "/media/1.png",
+                    "assets": [
+                        {
+                            "uri": "/media/2.webp",
+                            "filename": "second.webp",
+                            "order": 1,
+                            "ext": "webp",
+                        },
+                        {
+                            "uri": "/media/1.png",
+                            "filename": "first.png",
+                            "order": 0,
+                            "ext": "png",
+                        },
+                    ],
+                },
+            )
+        return httpx.Response(200, content=request.url.path.encode())
+
+    api = _make_client(handler)
+    sources = api.download_sources("j1", tmp_path)
+
+    assert [source["filename"] for source in sources] == ["second.webp", "first.png"]
+    assert sources[0]["path"].read_bytes() == b"/media/2.webp"
+    assert sources[1]["path"].read_bytes() == b"/media/1.png"
 
 
 def test_download_source_retries_on_server_error(tmp_path, monkeypatch) -> None:

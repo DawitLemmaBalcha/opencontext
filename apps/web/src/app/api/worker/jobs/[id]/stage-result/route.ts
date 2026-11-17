@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { WorkerStageResultRequestSchema } from "@opencontext/schemas";
+import { WorkerStageResultRequestSchema } from "@kylosonic/opencontext-schemas";
 import { applyStageResult } from "@/server/worker";
 import { jobToDetail } from "@/server/jobs";
 import {

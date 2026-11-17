@@ -9,7 +9,10 @@ import { cx } from "@/components/ui/cx";
 import {
   checkFileBeforeUpload,
   formatFileSize,
+  MAX_IMAGE_COUNT,
+  MAX_IMAGE_SIZE_LABEL,
   MAX_DURATION_LABEL,
+  MAX_PDF_SIZE_LABEL,
   MAX_SIZE_LABEL,
 } from "./upload-rules";
 
@@ -31,20 +34,20 @@ const DETAIL_LEVELS: DetailLevelOption[] = [
     id: "LOW",
     name: "Low",
     description:
-      "Transcript, scene titles, and major screen changes only - the smallest output.",
+      "Core visual summary and major changes only - the smallest output.",
   },
   {
     id: "MEDIUM",
     name: "Medium",
     description:
-      "Everything in Low plus per-scene visual descriptions, UI elements, visible text (OCR), and user interactions.",
+      "Everything in Low plus visual descriptions, UI elements, visible text (OCR), and user interactions.",
     default: true,
   },
   {
     id: "HIGH",
     name: "High",
     description:
-      "Everything in Medium plus fine-grained per-frame detail, design observations, and an exhaustive UI inventory.",
+      "Everything in Medium plus fine-grained detail, design observations, and an exhaustive UI inventory.",
   },
 ];
 
@@ -55,7 +58,10 @@ interface UploadError {
   message: string;
 }
 
-const ALLOWED_ACCEPT = ".mp4,.mov,.webm,.mkv,video/mp4,video/quicktime,video/webm,video/x-matroska";
+const ALLOWED_ACCEPT =
+  ".mp4,.mov,.webm,.mkv,.png,.jpg,.jpeg,.webp,.pdf," +
+  "video/mp4,video/quicktime,video/webm,video/x-matroska," +
+  "image/png,image/jpeg,image/webp,application/pdf";
 
 class UploadRequestError extends Error {
   constructor(
@@ -124,9 +130,9 @@ export function NewJobForm() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const abortTransferRef = useRef<(() => void) | null>(null);
-  const activeUploadIdRef = useRef<string | null>(null);
+  const activeUploadIdsRef = useRef<string[]>([]);
   const attemptRef = useRef(0);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [detailLevel, setDetailLevel] = useState<DetailLevelId>("MEDIUM");
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
@@ -145,78 +151,120 @@ export function NewJobForm() {
     return true;
   }
 
-  function acceptFile(candidate: File | null): void {
-    if (!candidate || refuseWhileBusy()) return;
-    const check = checkFileBeforeUpload(candidate.name, candidate.size);
-    if (!check.ok) {
-      // Keep the previous selection; the dropzone stays usable (B1).
-      setFile(null);
+  function acceptFiles(candidates: File[]): void {
+    if (candidates.length === 0 || refuseWhileBusy()) return;
+    const checks = candidates.map((candidate) =>
+      checkFileBeforeUpload(candidate.name, candidate.size),
+    );
+    const invalid = checks.find((check) => !check.ok);
+    if (invalid?.ok === false) {
+      setFiles([]);
       setPhase("idle");
-      setError({ code: "CLIENT_VALIDATION", message: check.message });
+      setError({ code: "CLIENT_VALIDATION", message: invalid.message });
+      return;
+    }
+    const valid = checks.filter(
+      (check): check is Extract<typeof check, { ok: true }> => check.ok,
+    );
+    if (valid.length > MAX_IMAGE_COUNT) {
+      setFiles([]);
+      setPhase("idle");
+      setError({
+        code: "CLIENT_VALIDATION",
+        message: `Choose up to ${MAX_IMAGE_COUNT} images per analysis`,
+      });
+      return;
+    }
+    if (valid.length > 1 && valid.some((check) => check.kind !== "image")) {
+      setFiles([]);
+      setPhase("idle");
+      setError({
+        code: "CLIENT_VALIDATION",
+        message: "Multiple-file jobs accept images only. Upload a video or PDF by itself.",
+      });
       return;
     }
     setError(null);
     setBusyNotice(null);
     setProgress(0);
-    setFile(candidate);
+    setFiles(candidates);
     setPhase("ready");
   }
 
   async function startUpload(): Promise<void> {
-    if (!file || phase !== "ready" || uploading) return;
+    if (files.length === 0 || phase !== "ready" || uploading) return;
     const attempt = ++attemptRef.current;
     setError(null);
     setPhase("uploading");
     setProgress(0);
 
     try {
-      const intentResponse = await fetch("/api/uploads", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          sizeBytes: file.size,
-          mime: file.type || undefined,
-          detailLevel,
-        }),
-      });
-      if (!intentResponse.ok) throw await uploadError(intentResponse);
-      const target = (await intentResponse.json()) as {
-        uploadId: string;
-        url: string;
-        headers: Record<string, string>;
-      };
-      if (attempt !== attemptRef.current) {
-        await fetch(`/api/uploads/${encodeURIComponent(target.uploadId)}`, {
-          method: "DELETE",
-        }).catch(() => undefined);
-        return;
-      }
-      activeUploadIdRef.current = target.uploadId;
+      const uploadIds: string[] = [];
+      for (const [index, selected] of files.entries()) {
+        const intentResponse = await fetch("/api/uploads", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            filename: selected.name,
+            sizeBytes: selected.size,
+            mime: selected.type || undefined,
+            detailLevel,
+          }),
+        });
+        if (!intentResponse.ok) throw await uploadError(intentResponse);
+        const target = (await intentResponse.json()) as {
+          uploadId: string;
+          url: string;
+          headers: Record<string, string>;
+        };
+        if (attempt !== attemptRef.current) {
+          await fetch(`/api/uploads/${encodeURIComponent(target.uploadId)}`, {
+            method: "DELETE",
+          }).catch(() => undefined);
+          return;
+        }
+        uploadIds.push(target.uploadId);
+        activeUploadIdsRef.current = [...uploadIds];
 
-      const transfer = putFileWithProgress(target, file, setProgress);
-      abortTransferRef.current = transfer.abort;
-      await transfer.promise;
-      if (attempt !== attemptRef.current) return;
-      abortTransferRef.current = null;
-      setProgress(100);
+        const transfer = putFileWithProgress(target, selected, (fileProgress) => {
+          setProgress(
+            Math.round(((index + fileProgress / 100) / files.length) * 95),
+          );
+        });
+        abortTransferRef.current = transfer.abort;
+        await transfer.promise;
+        if (attempt !== attemptRef.current) return;
+        abortTransferRef.current = null;
+      }
+
+      setProgress(95);
       setPhase("finalizing");
 
-      const completeResponse = await fetch(
-        `/api/uploads/${encodeURIComponent(target.uploadId)}/complete`,
-        {
-          method: "POST",
-          headers: { Accept: "application/json" },
-        },
-      );
+      const completeResponse =
+        uploadIds.length > 1
+          ? await fetch("/api/uploads/batch/complete", {
+              method: "POST",
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ uploadIds, detailLevel }),
+            })
+          : await fetch(
+              `/api/uploads/${encodeURIComponent(uploadIds[0])}/complete`,
+              {
+                method: "POST",
+                headers: { Accept: "application/json" },
+              },
+            );
       if (!completeResponse.ok) throw await uploadError(completeResponse);
       const summary = (await completeResponse.json()) as { id?: string };
       if (!summary.id) throw new Error("The job response did not contain an id");
 
-      activeUploadIdRef.current = null;
+      activeUploadIdsRef.current = [];
       setCreatedId(summary.id);
       setPhase("created");
       window.setTimeout(() => {
@@ -224,6 +272,15 @@ export function NewJobForm() {
       }, 450);
     } catch (caught) {
       if (attempt !== attemptRef.current) return;
+      const pendingIds = activeUploadIdsRef.current;
+      activeUploadIdsRef.current = [];
+      await Promise.all(
+        pendingIds.map((uploadId) =>
+          fetch(`/api/uploads/${encodeURIComponent(uploadId)}`, {
+            method: "DELETE",
+          }).catch(() => undefined),
+        ),
+      );
       const envelope =
         caught instanceof UploadRequestError
           ? { code: caught.code, message: caught.message }
@@ -242,8 +299,8 @@ export function NewJobForm() {
   }
 
   function resetForm(): void {
-    activeUploadIdRef.current = null;
-    setFile(null);
+    activeUploadIdsRef.current = [];
+    setFiles([]);
     setPhase("idle");
     setProgress(0);
     setError(null);
@@ -256,25 +313,30 @@ export function NewJobForm() {
     attemptRef.current += 1;
     abortTransferRef.current?.();
     abortTransferRef.current = null;
-    const uploadId = activeUploadIdRef.current;
+    const uploadIds = activeUploadIdsRef.current;
     resetForm();
-    if (!uploadId) return;
-    await fetch(`/api/uploads/${encodeURIComponent(uploadId)}`, {
-      method: "DELETE",
-    }).catch(() => undefined);
+    await Promise.all(
+      uploadIds.map((uploadId) =>
+        fetch(`/api/uploads/${encodeURIComponent(uploadId)}`, {
+          method: "DELETE",
+        }).catch(() => undefined),
+      ),
+    );
   }
 
   function onDrop(event: React.DragEvent<HTMLDivElement>): void {
     event.preventDefault();
     setDragging(false);
-    const dropped = event.dataTransfer.files?.[0] ?? null;
-    acceptFile(dropped);
+    acceptFiles(Array.from(event.dataTransfer.files ?? []));
   }
 
-  const fileCheck = file
-    ? checkFileBeforeUpload(file.name, file.size)
-    : null;
-  const pickedExtension = fileCheck?.ok ? fileCheck.extension : null;
+  const file = files[0] ?? null;
+  const fileChecks = files.map((selected) =>
+    checkFileBeforeUpload(selected.name, selected.size),
+  );
+  const selectionValid =
+    fileChecks.length > 0 && fileChecks.every((check) => check.ok);
+  const pickedKind = selectionValid && fileChecks[0].ok ? fileChecks[0].kind : null;
 
   return (
     <div className="space-y-6" aria-live="polite">
@@ -282,13 +344,19 @@ export function NewJobForm() {
       <p className="flex flex-wrap items-center gap-2 text-xs text-ink-faint">
         <span className="label-mono">Accepted formats</span>
         <span className="rounded-md border border-line bg-panel-muted px-2 py-1 font-mono">
-          MP4 · MOV · WebM · MKV
+          Video, images, PDF
         </span>
         <span className="rounded-md border border-line bg-panel-muted px-2 py-1 font-mono">
-          up to {MAX_SIZE_LABEL}
+          video ≤ {MAX_SIZE_LABEL}
         </span>
         <span className="rounded-md border border-line bg-panel-muted px-2 py-1 font-mono">
-          up to {MAX_DURATION_LABEL}
+          image ≤ {MAX_IMAGE_SIZE_LABEL}
+        </span>
+        <span className="rounded-md border border-line bg-panel-muted px-2 py-1 font-mono">
+          PDF ≤ {MAX_PDF_SIZE_LABEL}
+        </span>
+        <span className="rounded-md border border-line bg-panel-muted px-2 py-1 font-mono">
+          video ≤ {MAX_DURATION_LABEL}
         </span>
       </p>
 
@@ -297,9 +365,12 @@ export function NewJobForm() {
         id="new-job-file"
         type="file"
         accept={ALLOWED_ACCEPT}
+        multiple
         className="sr-only"
         disabled={uploading}
-        onChange={(event) => acceptFile(event.target.files?.[0] ?? null)}
+        onChange={(event) =>
+          acceptFiles(Array.from(event.target.files ?? []))
+        }
       />
 
       {/* Dropzone / selected-file surface */}
@@ -307,7 +378,7 @@ export function NewJobForm() {
         role="button"
         tabIndex={uploading ? -1 : 0}
         aria-disabled={uploading}
-        aria-label={file ? `Selected file: ${file.name}. Choose a different file.` : "Choose a video file (MP4, MOV, WebM, MKV)"}
+        aria-label={file ? `Selected ${files.length} file(s). Choose different files.` : "Choose a video, image, or PDF file"}
         onClick={() => {
           if (!uploading) inputRef.current?.click();
         }}
@@ -329,26 +400,52 @@ export function NewJobForm() {
           uploading && "pointer-events-none opacity-70",
         )}
       >
-        {file ? (
+        {files.length > 0 ? (
           <div className="flex flex-col items-center gap-2">
-            <span className="max-w-full truncate text-base font-semibold text-ink">
-              {file.name}
-            </span>
-            <span className="flex flex-wrap items-center justify-center gap-2 text-xs text-ink-muted">
-              <Badge tone="neutral" mono>{pickedExtension?.toUpperCase() ?? "?"}</Badge>
-              <span className="font-mono">{formatFileSize(file.size)}</span>
-              <span className="text-ink-faint">choose a different file or drop one here</span>
-            </span>
+            {files.length === 1 && file ? (
+              <>
+                <span className="max-w-full truncate text-base font-semibold text-ink">
+                  {file.name}
+                </span>
+                <span className="flex flex-wrap items-center justify-center gap-2 text-xs text-ink-muted">
+                  <Badge tone="neutral" mono>
+                    {fileChecks[0]?.ok
+                      ? fileChecks[0].extension.toUpperCase()
+                      : "?"}
+                  </Badge>
+                  <span className="font-mono">{formatFileSize(file.size)}</span>
+                  <span className="text-ink-faint">
+                    choose a different file or drop one here
+                  </span>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-base font-semibold text-ink">
+                  {files.length} images selected
+                </span>
+                <span className="flex max-w-full flex-wrap justify-center gap-2 text-xs text-ink-muted">
+                  {files.map((selected, index) => (
+                    <span
+                      key={`${selected.name}-${index}`}
+                      className="max-w-48 truncate rounded border border-line bg-panel-muted px-2 py-1"
+                    >
+                      {index + 1}. {selected.name}
+                    </span>
+                  ))}
+                </span>
+              </>
+            )}
           </div>
         ) : (
           <>
             <p className="text-sm font-medium text-ink">
-              Drag and drop a video here, or{" "}
+              Drag and drop a video, PDF, or up to {MAX_IMAGE_COUNT} images, or{" "}
               <span className="text-accent underline underline-offset-2">browse</span>
             </p>
             <p className="mt-2 text-xs text-ink-faint">
-              One file at a time. Names render as plain text and are never
-              executed.
+              Choose one video or PDF, or up to {MAX_IMAGE_COUNT} ordered
+              images. Names render as plain text and are never executed.
             </p>
           </>
         )}
@@ -381,7 +478,7 @@ export function NewJobForm() {
         </div>
       )}
 
-      {file && fileCheck?.ok && (
+      {files.length > 0 && selectionValid && (
         <>
           {/* Detail level (analysis-modes.md B2: three selectable cards). */}
           <fieldset>
@@ -429,7 +526,17 @@ export function NewJobForm() {
               disabled={phase !== "ready"}
               className="min-w-40"
             >
-              {transferring ? "Uploading…" : phase === "finalizing" ? "Creating job…" : "Analyze video"}
+              {transferring
+                ? "Uploading…"
+                : phase === "finalizing"
+                  ? "Creating job…"
+                  : files.length > 1
+                    ? `Analyze ${files.length} images`
+                    : pickedKind === "image"
+                      ? "Analyze image"
+                      : pickedKind === "pdf"
+                        ? "Analyze PDF"
+                    : "Analyze video"}
             </Button>
             <Button
               variant="ghost"
@@ -437,7 +544,7 @@ export function NewJobForm() {
               onClick={resetForm}
               disabled={uploading}
             >
-              Remove file
+              {files.length > 1 ? "Remove files" : "Remove file"}
             </Button>
             {phase === "error" && (
               <Button variant="secondary" size="sm" onClick={startUpload}>
@@ -452,7 +559,11 @@ export function NewJobForm() {
         <Card>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs text-ink-muted">
-              <span className="font-medium">Uploading {file?.name}</span>
+              <span className="font-medium">
+                {files.length > 1
+                  ? `Uploading ${files.length} images`
+                  : `Uploading ${file?.name ?? "media"}`}
+              </span>
               <span className="font-mono">{progress}%</span>
             </div>
             <div

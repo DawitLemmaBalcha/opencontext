@@ -1,7 +1,7 @@
 {
-  "name": "@opencontext/schemas",
+  "name": "@kylosonic/opencontext-schemas",
   "version": "0.1.0",
-  "description": "Shared TypeScript and Zod contracts for OpenContext jobs, media, evidence, and worker payloads",
+  "description": "Shared TypeScript and Zod contracts for OpenContext video, image, job, evidence, and worker payloads",
   "license": "MIT",
   "author": "OpenContext contributors",
   "repository": {

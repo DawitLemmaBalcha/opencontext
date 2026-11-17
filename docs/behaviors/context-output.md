@@ -7,15 +7,16 @@ The context document is the product's deliverable: one document, three access pa
 ## B1 — The document
 
 - **Structure:**
-  1. Header — source name, duration, generated date, detail level
-  2. Chronological aggregated context — timeline blocks merging transcript, visual observations, OCR, and interactions
+  1. Header — source name and type, duration for video, generated date, detail level
+  2. Chronological aggregated context — timeline blocks merging transcript, visual observations, OCR, page observations, and interactions
   3. Developer context section — application structure, UI hierarchy, navigation, user interactions, visible text, component relationships, state transitions, design patterns, and implementation-relevant observations
+- **Multi-source structure:** image sets list each ordered source and deterministic cross-image text/UI differences; PDFs list rendered pages and combine embedded text with visual findings.
 - **Evidence references:** Every atomic transcript, visual, OCR, interaction, state-transition, and implementation claim carries a stable evidence ID, source timestamp, and certainty label in Markdown and a matching structured JSON evidence record. Aggregated timeline entries retain clickable source-time ranges. Interaction claims remain marked `INFERRED` even when the surrounding frame is observed.
 - **Honesty rules:** observed vs inferred vs uncertain are always distinguished; functionality is never invented; adjacent duplicate observations are merged; timestamps are preserved
-- **Bounded timestamps:** a claim is never timestamped past the end of the recording. If a speech model reports a segment that runs beyond the media duration, its bounds are trimmed to the recording and the claim text is preserved.
+- **Bounded timestamps:** a claim is never timestamped past the end of the video. If a speech model reports a segment that runs beyond the media duration, its bounds are trimmed to the recording and the claim text is preserved. Sources without a duration (image sets, PDFs) are unaffected.
 - **Refinement safety:** optional text-model refinement must preserve evidence-linked claim lines and timeline rows exactly. If it changes or drops one, the deterministic template is used.
 - **Human review:** an owner can confirm or flag each claim, add a note, and suggest a correction. The original claim remains intact; review annotations are stored with the evidence record and included in both exports. Demo reviews are read-only.
-- **Acceptance:** compare the document against the source video — everything stated as observed is actually visible, and uncertain statements are marked
+- **Acceptance:** compare the document against the source video, image set, or PDF — everything stated as observed is actually present, and uncertain statements are marked
 
 ## B2 — Copy Context
 

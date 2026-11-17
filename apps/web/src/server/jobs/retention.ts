@@ -1,4 +1,4 @@
-import { RETENTION } from "@opencontext/schemas";
+import { RETENTION } from "@kylosonic/opencontext-schemas";
 
 /**
  * Retention rules (jobs.md B9): completed jobs keep media and results for

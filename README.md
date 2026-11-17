@@ -3,12 +3,12 @@
 [![CI](https://github.com/kylosonic/opencontext/actions/workflows/ci.yml/badge.svg)](https://github.com/kylosonic/opencontext/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Video context for text-only AI.**
+**Visual context for text-only AI.**
 
-Text-only models and coding agents cannot inspect a screen recording. OpenContext
-extracts speech, frames, visible text, UI elements, interactions, and state
-changes, then returns a structured developer handoff where every claim links to
-a source timestamp and certainty label.
+Text-only models and coding agents cannot inspect a screen recording, image, or
+PDF. OpenContext extracts speech, visual structure, visible text, UI elements,
+interactions, and state changes, then returns a structured developer handoff
+where every claim links to source evidence and a certainty label.
 
 ## Start locally
 
@@ -72,6 +72,13 @@ opencontext analyze .artifacts/opencontext-fixture.mp4 --offline \
   review.
 - Direct upload intents with presigned S3 `PUT` support and local-disk
   development storage.
+- PNG, JPEG, and WebP uploads support one image or an ordered set of up to 10.
+  The server checks bytes, MIME type, format, and a 40-megapixel ceiling; the
+  worker applies EXIF orientation, flattens transparency onto white, removes
+  metadata, and adds cross-image changes to the context.
+- PDFs up to 50 MB and 30 pages are rendered into ordered pages. Embedded text
+  becomes OCR evidence and each rendered page follows the same vision,
+  evidence, and export path as an image.
 - Explicit size/MIME validation, worker-token authentication, rate limits,
   retention cleanup, and tested FFmpeg argument handling.
 - Upload cancellation with temporary-object cleanup and immediate retry.
@@ -87,13 +94,16 @@ opencontext analyze .artifacts/opencontext-fixture.mp4 --offline \
 - Audio-backed worker end-to-end test that transcribes the committed Harvard
   recording with real Faster Whisper in CI and checks transcript WER/CER and
   evidence timestamp bounds.
+- Generated image-set and PDF jobs are covered from upload and batch commit
+  through worker rendering, result persistence, and export data.
 - Real S3-compatible presigned upload/download coverage in CI.
 - OpenCode Go hosted vision smoke and measured synthetic UI/OCR evidence with
-  published context, scores, configuration, and limitations.
+  published context, scores, configuration, and limitations. The opt-in smoke
+  also checks a generated checkout image through the full image pipeline.
 - Standalone `opencontext analyze`, `brief`, `replay`, `evaluate`, and `doctor` CLI
   workflows with release-ready shared schemas.
 - Repository-aware implementation briefs and a local MCP server that expose
-  evidence-linked video context directly to coding agents.
+  evidence-linked video and image context directly to coding agents.
 - Keyboard-tested result tabs, timeline seeking, and evidence labels.
 
 ## What is not ready
@@ -120,16 +130,19 @@ Current verification and remaining work:
 
 ## How it works
 
-1. The browser creates an upload intent and uploads directly to object storage.
+1. The browser creates an upload intent and uploads a video, PDF, or image set
+   directly to object storage.
 2. The server verifies object size and MIME type, then creates a queued job.
-3. The worker claims the job and probes the source with FFmpeg.
-4. Audio becomes timestamped transcript segments; frames become visual/OCR rows.
+3. The worker claims the job and probes or renders the source with FFmpeg and
+   PDFium.
+4. Audio becomes timestamped transcript segments; frames, images, and PDF
+   pages become visual/OCR rows.
 5. Aggregation creates a chronological timeline.
 6. Context generation emits evidence-linked Markdown and JSON.
 
 ```text
-Video → Upload intent → Object storage → Queue → FFmpeg → Speech/Vision/OCR
-      → Timeline → Evidence ledger → Markdown + JSON
+Video/image/PDF → Upload intent → Object storage → Queue → FFmpeg/PDFium
+                 → Speech/Vision/OCR → Timeline → Evidence ledger → Markdown + JSON
 ```
 
 ## Installable packages
@@ -139,9 +152,11 @@ The worker includes a standalone CLI:
 ```bash
 python -m pip install "workers/processor[local]"
 opencontext analyze video.mp4 --out context.md --json context.json
+opencontext analyze mockup.png --out image.md --json image.json
+opencontext analyze reference.pdf --out pdf.md --json pdf.json
 ```
 
-`@opencontext/schemas` builds to publishable ESM and declarations. Both artifacts
+`@kylosonic/opencontext-schemas` builds to publishable ESM and declarations. Both artifacts
 are release-ready in the source tree but not published. See
 [docs/installable-packages.md](docs/installable-packages.md) and
 [docs/releasing.md](docs/releasing.md).
@@ -163,9 +178,9 @@ cd workers/processor
 .venv/Scripts/python -m pytest
 ```
 
-`npm test` includes a cross-language contract test and a generated-video
-end-to-end test that exercises direct upload, queue claim, worker HTTP calls,
-FFmpeg extraction, provider output, evidence persistence, and exports. The
+`npm test` includes cross-language contract tests and generated media end-to-end
+tests that exercise direct upload, queue claim, worker HTTP calls, FFmpeg and
+PDFium extraction, provider output, evidence persistence, and exports. The
 worker suite also contains an opt-in audio-backed test that runs real local
 speech recognition against the attributed Harvard recording:
 

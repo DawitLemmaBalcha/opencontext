@@ -11,6 +11,18 @@ All notable changes are documented here. The project follows
 - Added an audio-backed worker end-to-end test that transcribes the committed
   Harvard recording with real Faster Whisper, checks transcript WER/CER, and
   validates the evidence ledger and its timestamp bounds in CI.
+- Added a worker lease heartbeat so long transcription and vision stages keep
+  their queue claim, and made the worker container run as an unprivileged user.
+- Added PNG, JPEG, and WebP image inputs, including ordered sets of up to 10
+  images. Upload completion validates each object before creating one job, and
+  the worker adds cross-image text and UI changes to the Markdown and JSON
+  output.
+- Added PDF ingestion up to 50 MB and 30 pages. PDF pages are rendered in order,
+  embedded text becomes OCR evidence, and the result viewer includes an
+  authenticated PDF preview.
+- Hardened still-image ingestion with signature checks, Sharp metadata
+  validation, a 40-megapixel ceiling, EXIF orientation handling, transparency
+  flattening, and metadata stripping before vision analysis.
 - Verified a production upload-to-export job on Vercel, Neon PostgreSQL, S3 via
   Vercel OIDC, and the scheduled GitHub Actions worker.
 - Fixed S3 artifact uploads to use a Node readable stream and to calculate only
@@ -22,7 +34,8 @@ All notable changes are documented here. The project follows
 - Generated-video end-to-end coverage and cross-language contract validation.
 - Docker Compose stack for web, worker, and PostgreSQL.
 - Standalone `opencontext analyze` CLI.
-- Publishable `opencontext-video` Python package and `@opencontext/schemas` npm package.
+- Publishable `opencontext-video` Python package and
+  `@kylosonic/opencontext-schemas` npm package.
 - Patched reachable npm dependency advisories and documented the remaining
   development-tool audit findings.
 - Verified a real Faster Whisper transcription locally and pinned PyAV below

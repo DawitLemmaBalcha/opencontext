@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { WorkerClaimRequestSchema } from "@opencontext/schemas";
+import { WorkerClaimRequestSchema } from "@kylosonic/opencontext-schemas";
 import { claimJob } from "@/server/queue";
 import { jobToDetail } from "@/server/jobs";
 import { getWorkerSourceInfo } from "@/server/worker";

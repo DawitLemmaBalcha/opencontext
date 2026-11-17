@@ -1,5 +1,5 @@
 import { Badge, type BadgeTone } from "@/components/ui/badge";
-import type { JobStatus } from "@opencontext/schemas";
+import type { JobStatus } from "@kylosonic/opencontext-schemas";
 
 /**
  * Status label/tone shared by the signed-in job surfaces. Copy mirrors

@@ -11,7 +11,7 @@ import { Container } from "@/components/ui/container";
 export const metadata: Metadata = {
   title: "New analysis — OpenContext",
   description:
-    "Upload a video or screen recording and generate structured developer context for text-only AI agents.",
+    "Upload a video, screen recording, or image and generate structured developer context for text-only AI agents.",
 };
 
 export const dynamic = "force-dynamic";
@@ -40,9 +40,10 @@ export default async function NewAnalysisPage() {
                   New analysis
                 </h1>
                 <p className="mt-3 max-w-xl text-base leading-relaxed text-ink-muted">
-                  Upload one video or screen recording. OpenContext extracts
-                  audio, samples frames, and produces a timestamped developer
-                  context document you can copy into any text-only agent.
+                  Upload one video, screen recording, or image. OpenContext
+                  extracts speech and visual details into an evidence-linked
+                  developer context document you can copy into any text-only
+                  agent.
                 </p>
               </div>
               <ButtonLink href="/app/jobs" variant="ghost" size="sm">

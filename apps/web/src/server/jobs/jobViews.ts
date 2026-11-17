@@ -4,7 +4,7 @@ import type {
   JobStatus,
   StageName,
   StageState,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 import type {
   AnalysisResultView,
   JobHeaderView,
@@ -103,6 +103,7 @@ export function jobHeaderView(detail: JobDetail): JobHeaderView {
     status: detail.status as JobStatusView,
     detailLevel: detail.detailLevel as DetailLevel as JobHeaderView["detailLevel"],
     audioPresent: detail.source?.audioPresent,
+    sourceKind: detail.source?.kind,
     createdAt: detail.createdAt,
     expiresAt: detail.expiresAt,
     retentionNote: detail.retentionNote,
@@ -174,6 +175,7 @@ export interface ResultMetadata {
   id: string;
   displayName: string;
   sourceName: string;
+  sourceKind?: "video" | "image" | "pdf";
   detailLevel: JobHeaderView["detailLevel"];
   status: "COMPLETED" | "PARTIAL";
   formatVersion: number;
@@ -198,6 +200,7 @@ export function buildResultView(
     id: detail.id,
     displayName: detail.displayName,
     sourceName: detail.displayName,
+    ...(detail.source?.kind ? { sourceKind: detail.source.kind } : {}),
     detailLevel: detail.detailLevel,
     status: detail.status === "COMPLETED" ? "COMPLETED" : "PARTIAL",
     formatVersion: data.formatVersion ?? 1,

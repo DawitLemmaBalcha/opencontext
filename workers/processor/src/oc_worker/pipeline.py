@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -34,7 +35,7 @@ from oc_worker import aggregation, context
 from oc_worker.api_client import ApiClient, run_with_retry
 from oc_worker.config import Settings
 from oc_worker.errors import PermanentFailure, TransientFailure
-from oc_worker.ffmpeg import extract_audio, extract_frames, probe
+from oc_worker.ffmpeg import extract_audio, extract_frames, extract_image_frame, probe
 from oc_worker.models import (
     DetailLevel,
     OCRObservation,
@@ -42,6 +43,7 @@ from oc_worker.models import (
     VisualObservation,
     clamp_segments_to_duration,
 )
+from oc_worker.pdf import MAX_PDF_PAGES, extract_pdf_pages
 from oc_worker.providers import build_ocr, build_text, build_transcription, build_vision
 from oc_worker.providers.ocr.base import OcrProvider
 from oc_worker.providers.text.base import TextProvider
@@ -60,14 +62,19 @@ STAGE_WEIGHTS = {
 }
 MAX_DURATION_SECONDS = 1800
 NOT_A_VIDEO_MESSAGE = "This file is not a valid video"
+NOT_AN_IMAGE_MESSAGE = "This file is not a valid image"
+NOT_A_PDF_MESSAGE = "This file is not a valid PDF"
 TOO_LONG_MESSAGE = "Video is longer than the 30-minute limit"
 NO_AUDIO_REASON = "NO_AUDIO"
 VISION_CONCURRENCY = 2
+LEASE_HEARTBEAT_SECONDS = 60.0
 
 # Injectable ffmpeg entry points (tests substitute fakes).
 ProbeFn = Callable[[str], dict[str, Any]]
 ExtractAudioFn = Callable[[str, str], bool]
 ExtractFramesFn = Callable[[str, str], list[dict[str, Any]]]
+ExtractImageFn = Callable[[str, str], dict[str, Any]]
+ExtractPdfFn = Callable[[str, str], list[dict[str, Any]]]
 
 
 class Pipeline:
@@ -85,6 +92,8 @@ class Pipeline:
         probe_fn: ProbeFn | None = None,
         extract_audio_fn: ExtractAudioFn | None = None,
         extract_frames_fn: ExtractFramesFn | None = None,
+        extract_image_fn: ExtractImageFn | None = None,
+        extract_pdf_fn: ExtractPdfFn | None = None,
     ) -> None:
         self.api = api
         self.settings = settings
@@ -120,7 +129,23 @@ class Pipeline:
                 source, output_dir, ffmpeg_path=configured_ffmpeg
             )
         )
+        self._extract_image = (
+            extract_image_fn
+            if extract_image_fn is not None
+            else lambda source, destination: extract_image_frame(
+                source, destination, ffmpeg_path=configured_ffmpeg
+            )
+        )
+        self._extract_pdf = (
+            extract_pdf_fn
+            if extract_pdf_fn is not None
+            else lambda source, output_dir: extract_pdf_pages(
+                source, output_dir, max_pages=MAX_PDF_PAGES
+            )
+        )
         self._current_stage = "EXTRACTING"
+        self._heartbeat_stop: threading.Event | None = None
+        self._heartbeat_thread: threading.Thread | None = None
 
     # -- helpers ----------------------------------------------------------
 
@@ -134,8 +159,63 @@ class Pipeline:
         previous = self._stage_state(job, stage).get("attempt") or 0
         return int(previous) + 1
 
+    def _heartbeat_loop(self, job_id: str, stop: threading.Event) -> None:
+        while not stop.wait(LEASE_HEARTBEAT_SECONDS):
+            try:
+                self.api.renew_lease(
+                    job_id,
+                    stage=self._current_stage,
+                    progress=0,
+                )
+            except (PermanentFailure, TransientFailure) as exc:
+                log.warning(
+                    "job=%s stage=%s lease_heartbeat_error=%s",
+                    job_id,
+                    self._current_stage,
+                    exc,
+                )
+
+    def _start_heartbeat(self, job_id: str) -> None:
+        stop = threading.Event()
+        thread = threading.Thread(
+            target=self._heartbeat_loop,
+            args=(job_id, stop),
+            name=f"lease-heartbeat-{job_id}",
+            daemon=True,
+        )
+        self._heartbeat_stop = stop
+        self._heartbeat_thread = thread
+        thread.start()
+
+    def _stop_heartbeat(self) -> None:
+        stop = self._heartbeat_stop
+        thread = self._heartbeat_thread
+        self._heartbeat_stop = None
+        self._heartbeat_thread = None
+        if stop is not None:
+            stop.set()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=5)
+
     def _done(self, job: dict[str, Any], stage: str) -> bool:
         return self._stage_state(job, stage).get("status") in ("SUCCEEDED", "SKIPPED")
+
+    @staticmethod
+    def _source_kind(job: dict[str, Any]) -> str:
+        source = job.get("source")
+        if isinstance(source, dict) and source.get("kind") in ("video", "image", "pdf"):
+            return str(source["kind"])
+        extension = ""
+        if isinstance(source, dict):
+            extension = str(source.get("ext") or "").lower().lstrip(".")
+        if not extension:
+            filename = str(job.get("displayName") or "")
+            extension = filename.rpartition(".")[2].lower()
+        if extension in {"png", "jpg", "jpeg", "webp"}:
+            return "image"
+        if extension == "pdf":
+            return "pdf"
+        return "video"
 
     # -- stages -----------------------------------------------------------
 
@@ -144,22 +224,48 @@ class Pipeline:
     ) -> tuple[dict[str, Any], Path | None, list[dict[str, Any]]]:
         self._current_stage = "EXTRACTING"
         job_id = job["id"]
-        src = workdir / "source.bin"
-        self.api.download_source(job_id, src)
+        source_kind = self._source_kind(job)
+        sources = self.api.download_sources(job_id, workdir)
+        if not sources:
+            raise PermanentFailure("The job has no downloadable source media")
+        primary = sources[0]
+        src = Path(primary["path"])
         if not resume:
             self.api.progress(
                 job_id, stage="EXTRACTING", stage_status="RUNNING", progress=0,
                 message="Probing source",
             )
-        probed = self._probe(str(src))
-        if not probed.get("video_present"):
-            raise PermanentFailure(NOT_A_VIDEO_MESSAGE)
-        duration = probed.get("duration")
-        if duration is None or float(duration) > MAX_DURATION_SECONDS:
-            raise PermanentFailure(TOO_LONG_MESSAGE)
+        probed: dict[str, Any] = {}
+        duration = 0.0
+        if source_kind == "video":
+            probed = self._probe(str(src))
+            if not probed.get("video_present"):
+                raise PermanentFailure(NOT_A_VIDEO_MESSAGE)
+            duration_value = probed.get("duration")
+            if duration_value is None or float(duration_value) > MAX_DURATION_SECONDS:
+                raise PermanentFailure(TOO_LONG_MESSAGE)
+            duration = float(duration_value)
+        elif source_kind == "image":
+            if len(sources) > 10:
+                raise PermanentFailure("Image-set jobs accept at most 10 images")
+            for asset in sources:
+                image_probe = self._probe(str(asset["path"]))
+                if not image_probe.get("video_present"):
+                    raise PermanentFailure(NOT_AN_IMAGE_MESSAGE)
+                width = int(image_probe.get("width") or 0)
+                height = int(image_probe.get("height") or 0)
+                if width * height > 40_000_000:
+                    raise PermanentFailure(
+                        "Image dimensions are too large — the limit is 40 megapixels"
+                    )
+            probed = self._probe(str(src))
+        elif source_kind == "pdf":
+            probed = {"width": None, "height": None, "audio_present": False}
+        else:
+            raise PermanentFailure("Unsupported source media")
 
         audio_path: Path | None = None
-        if probed.get("audio_present"):
+        if source_kind == "video" and probed.get("audio_present"):
             if not resume:
                 self.api.progress(
                     job_id, stage="EXTRACTING", stage_status="RUNNING", progress=35,
@@ -172,25 +278,114 @@ class Pipeline:
 
         if not resume:
             self.api.progress(
-                job_id, stage="EXTRACTING", stage_status="RUNNING", progress=60,
-                message="Extracting frames",
+                job_id,
+                stage="EXTRACTING",
+                stage_status="RUNNING",
+                progress=60,
+                message=(
+                    "Preparing image"
+                    if source_kind == "image"
+                    else "Rendering PDF pages"
+                    if source_kind == "pdf"
+                    else "Extracting frames"
+                ),
             )
-        frames = self._extract_frames(str(src), str(workdir / "frames"))
+        if source_kind == "image":
+            frames = []
+            for index, asset in enumerate(sources):
+                frame = self._extract_image(
+                    str(asset["path"]),
+                    str(
+                        workdir
+                        / "frames"
+                        / f"image_{index + 1:03d}.jpg"
+                    ),
+                )
+                frames.append(
+                    {
+                        **frame,
+                        "sourceKind": "image",
+                        "sourceIndex": index,
+                        "sourceName": asset.get("filename") or f"Image {index + 1}",
+                        "frameId": f"image-{index + 1:02d}",
+                        "artifactTimestamp": float(index + 1),
+                    }
+                )
+        elif source_kind == "pdf":
+            pages = self._extract_pdf(str(src), str(workdir / "pages"))
+            if not pages:
+                raise PermanentFailure(NOT_A_PDF_MESSAGE)
+            frames = [
+                {
+                    "timestamp": 0.0,
+                    "path": page["path"],
+                    "sourceKind": "pdf",
+                    "sourceIndex": int(page["pageNumber"]) - 1,
+                    "sourceName": f"PDF page {page['pageNumber']}",
+                    "frameId": f"pdf-page-{int(page['pageNumber']):02d}",
+                    "embeddedText": page.get("text") or "",
+                    "artifactTimestamp": float(page["pageNumber"]),
+                }
+                for page in pages
+            ]
+        else:
+            frames = self._extract_frames(str(src), str(workdir / "frames"))
+            for frame in frames:
+                frame.update(
+                    {
+                        "sourceKind": "video",
+                        "sourceIndex": 0,
+                        "sourceName": primary.get("filename"),
+                        "frameId": None,
+                    }
+                )
         if not resume:
             for frame in frames:
                 self.api.upload_artifact(
                     job_id,
                     kind="FRAME",
                     file_path=frame["path"],
-                    timestamp_sec=frame["timestamp"],
+                    timestamp_sec=frame.get(
+                        "artifactTimestamp", frame["timestamp"]
+                    ),
                 )
         probe_data = {
             "durationSec": duration,
-            "width": probed.get("width"),
-            "height": probed.get("height"),
             "audioPresent": bool(probed.get("audio_present")),
             "frameCount": len(frames),
         }
+        if probed.get("width") is not None:
+            probe_data["width"] = probed["width"]
+        if probed.get("height") is not None:
+            probe_data["height"] = probed["height"]
+        if source_kind != "video":
+            source_assets = (
+                [
+                    {
+                        "name": frame["sourceName"],
+                        "kind": source_kind,
+                        "order": index,
+                    }
+                    for index, frame in enumerate(frames)
+                ]
+                if source_kind == "pdf"
+                else [
+                    {
+                        "name": asset.get("filename") or f"Source {index + 1}",
+                        "kind": asset.get("kind") or source_kind,
+                        "order": index,
+                    }
+                    for index, asset in enumerate(sources)
+                ]
+            )
+            probe_data.update(
+                {
+                    "sourceKind": source_kind,
+                    "assetCount": len(sources),
+                    "sourceAssets": source_assets,
+                    **({"pageCount": len(frames)} if source_kind == "pdf" else {}),
+                }
+            )
         if not resume:
             self.api.stage_result(
                 job_id,
@@ -257,7 +452,8 @@ class Pipeline:
         selected = [
             frame
             for frame in frames
-            if aggregation.frame_selected(float(frame["timestamp"]), detail_level)
+            if frame.get("sourceKind") != "video"
+            or aggregation.frame_selected(float(frame["timestamp"]), detail_level)
         ]
 
         def analyze_one(frame: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -265,16 +461,33 @@ class Pipeline:
             vision_context = {
                 "timestampSec": float(frame["timestamp"]),
                 "detailLevel": detail_level.value,
-                "sourceName": job.get("displayName"),
+                "jobName": job.get("displayName"),
                 "durationSec": duration_sec,
+                "sourceKind": self._source_kind(job),
+                "sourceIndex": int(frame.get("sourceIndex") or 0),
+                "sourceName": frame.get("sourceName"),
             }
             raw = run_with_retry(
                 lambda: self.vision_provider.analyze(frame_bytes, vision_context)
             )
             raw = aggregation.mark_interaction_certainty(raw)
             raw["timestampSec"] = float(frame["timestamp"])
+            raw["frameId"] = frame.get("frameId")
             raw["provider"] = self.vision_provider.name
             ocr: list[dict[str, Any]] = []
+            embedded_text = str(frame.get("embeddedText") or "").strip()
+            if embedded_text:
+                for line in embedded_text.splitlines():
+                    text = line.strip()
+                    if text:
+                        ocr.append(
+                            {
+                                "timestampSec": float(frame["timestamp"]),
+                                "frameId": frame.get("frameId"),
+                                "text": text,
+                                "provider": "pdf_text",
+                            }
+                        )
             if self.ocr_provider is None:
                 for text_item in raw.get("visibleText") or []:
                     # canonical visibleText entries are strings; legacy
@@ -291,6 +504,7 @@ class Pipeline:
                         continue
                     row: dict[str, Any] = {
                         "timestampSec": float(frame["timestamp"]),
+                        "frameId": frame.get("frameId"),
                         "text": text,
                         "provider": self.vision_provider.name,
                     }
@@ -309,6 +523,7 @@ class Pipeline:
                         continue
                     row: dict[str, Any] = {
                         "timestampSec": float(frame["timestamp"]),
+                        "frameId": frame.get("frameId"),
                         "text": text,
                         "provider": self.ocr_provider.name,
                     }
@@ -419,6 +634,8 @@ class Pipeline:
             ocr=ocr_items,
             timeline=timeline,
             audio_present=bool(probe_data.get("audioPresent")),
+            source_kind=self._source_kind(job),
+            source_assets=probe_data.get("sourceAssets") or [],
             text_provider=self.text_provider,
         )
         self.api.stage_result(
@@ -436,6 +653,7 @@ class Pipeline:
         job_id = job["id"]
         detail_level = DetailLevel(str(job.get("detailLevel") or "MEDIUM").upper())
         started = time.monotonic()
+        self._start_heartbeat(job_id)
         try:
             with tempfile.TemporaryDirectory(
                 prefix="oc-worker-", ignore_cleanup_errors=True
@@ -468,6 +686,8 @@ class Pipeline:
         except TransientFailure as exc:
             self._fail(job_id, str(exc), "TRANSIENT", retryable=True)
             return "failed"
+        finally:
+            self._stop_heartbeat()
         elapsed = time.monotonic() - started
         log.info("job=%s status=completed duration=%.1fs", job_id, elapsed)
         return "completed"

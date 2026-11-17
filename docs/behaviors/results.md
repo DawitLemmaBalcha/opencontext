@@ -17,6 +17,11 @@ Status: IMPLEMENTED — SEE docs/status.md FOR VERIFICATION SCOPE
 - **Edge cases:** source media expired by retention → the player area shows an explanatory placeholder; the timeline still works
 - **Acceptance:** open a job with timeline entries → click an entry at 01:24 → the player seeks to 01:24
 
+For an image job, the source area shows the uploaded image and switches between
+ordered images in a set. For a PDF job, the source area shows an authenticated
+embedded PDF preview. Timeline and evidence selection remain available without
+attempting video seeking.
+
 ## B3 — Job header
 
 - Every job page shows: display name, status, detail level, created time, retention note, and (for demo) the persistent "Demo Analysis" badge.
@@ -26,7 +31,9 @@ Status: IMPLEMENTED — SEE docs/status.md FOR VERIFICATION SCOPE
 No stage may render a blank tab:
 
 - **Transcript:** no audio track → "No audio track detected — transcription was skipped" (not an error)
-- **OCR:** no visible text → "No visible text was detected in this video"
+- **Transcript for an image:** "Still image — transcription does not apply"
+- **Transcript for a PDF:** "PDF source — transcription does not apply"
+- **OCR:** no visible or embedded text → a source-specific video, image, or PDF message
 - **Visual Analysis:** no observations yet → "Analyzing…" while active; a specific message if the stage failed
 - **Timeline:** no entries → explanatory message
 - **Job list:** no jobs → empty state with an "Analyze your first video" action
@@ -43,6 +50,7 @@ No stage may render a blank tab:
 - Evidence references and timeline ranges are selectable from the context view. When source playback is available, selection seeks the video and brings it into view; when it is unavailable, the selected source time remains visible.
 - Completed results include an Evidence review tab. Job owners can confirm or flag a claim, add a note or suggested correction, and clear a review. The original claim is retained, and the review is persisted in Markdown and JSON exports. Demo evidence is read-only.
 - Interaction claims are marked `INFERRED` even when the surrounding frame is `OBSERVED`.
+- Image observations use `image-NN` frame IDs and PDF page observations use `pdf-page-NN`; the Visual Analysis and OCR tabs show those IDs so multi-source evidence is unambiguous.
 - **Acceptance:** select an `INFERRED` marker in a completed job → the source player seeks to its timestamp; the JSON evidence ledger contains the same ID, claim, timestamp, certainty, and collection index.
 
 ## B7 — Keyboard and screen-reader access

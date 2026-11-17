@@ -30,6 +30,6 @@ without documentation can silently create an undocumented contract.
 ## Verify
 
 ```bash
-npm run build --workspace @opencontext/schemas
+npm run build --workspace @kylosonic/opencontext-schemas
 node --test scripts/error-catalog.test.mjs
 ```

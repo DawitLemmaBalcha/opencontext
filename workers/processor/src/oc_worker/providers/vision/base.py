@@ -6,7 +6,7 @@ from typing import Any, Protocol
 
 
 class VisionProvider(Protocol):
-    """Analyze one video frame into a structured observation dict.
+    """Analyze one video frame or still image into an observation dict.
 
     Contract fields: certainty (OBSERVED|INFERRED|UNCERTAIN), sceneTitle,
     visualDescription, uiElements, visibleText, interactions (always

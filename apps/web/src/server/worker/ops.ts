@@ -4,6 +4,7 @@ import {
   AnalyzeDataSchema,
   ContextDataSchema,
   SourceMetaSchema,
+  sourceKindForExtension,
   SKIP_REASON_NO_AUDIO,
   TranscriptSegmentSchema,
   TimelineEntrySchema,
@@ -12,7 +13,7 @@ import {
   type WorkerProgressRequest,
   type WorkerStageResultRequest,
   type WorkerSourceInfo,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import { storage } from "@/server/storage";
 import { computeProgress } from "@/server/jobs/progress";
@@ -72,6 +73,16 @@ export async function applyProgress(
   });
 }
 
+/** POST /api/worker/jobs/[id]/heartbeat — renew the lease without rewriting stage state. */
+export async function applyHeartbeat(job: Job): Promise<Job> {
+  return prisma.job.update({
+    where: { id: job.id },
+    data: {
+      leaseUntil: new Date(Date.now() + LEASE_MS),
+    },
+  });
+}
+
 /**
  * POST /api/worker/jobs/[id]/stage-result — idempotent upsert per stage
  * (blueprint §4 resume idempotency). Routes `data` into the dedicated
@@ -120,6 +131,8 @@ export async function applyStageResult(
       if (meta.height !== undefined) extra.height = meta.height;
       if (meta.audioPresent !== undefined) extra.audioPresent = meta.audioPresent;
       if (meta.frameCount !== undefined) extra.frameCount = meta.frameCount;
+      if (meta.assetCount !== undefined) extra.assetCount = meta.assetCount;
+      if (meta.pageCount !== undefined) extra.pageCount = meta.pageCount;
     }
   }
   if (input.stage === "AGGREGATING" && input.outcome === "SUCCEEDED" && input.data) {
@@ -247,12 +260,59 @@ export async function getWorkerSourceInfo(job: Job): Promise<WorkerSourceInfo> {
   }
   const sizeBytes = job.sourceSize ?? 0;
   const filename = job.displayName;
+  const kind = sourceKindForExtension(job.sourceExt ?? "");
+  const media = await prisma.media.findMany({
+    where: { jobId: job.id, kind: "SOURCE" },
+    orderBy: { timestampSec: "asc" },
+  });
+  const ordered = media.length > 0 ? media : [];
+  const assets = await Promise.all(
+    ordered.map(async (item, index) => {
+      const ext = item.key.slice(item.key.lastIndexOf(".") + 1).toLowerCase();
+      const uri =
+        storage.provider === "s3"
+          ? await storage.presign(item.key, 3600)
+          : `/api/worker/media/${item.key}`;
+      if (!uri) {
+        throw new Error(`S3 presign failed for ${item.key}`);
+      }
+      return {
+        uri,
+        provider: storage.provider,
+        sizeBytes: item.sizeBytes,
+        filename:
+          ordered.length === 1
+            ? filename
+            : kind === "pdf"
+              ? `PDF source`
+              : `Image ${index + 1}`,
+        kind: sourceKindForExtension(ext),
+        ext,
+        mime: item.mime ?? "application/octet-stream",
+        order: index,
+      };
+    }),
+  );
   if (storage.provider === "s3") {
     const uri = await storage.presign(key, 3600);
     if (!uri) {
       throw new Error(`S3 presign failed for ${key}`);
     }
-    return { uri, provider: "s3", sizeBytes, filename };
+    return {
+      uri,
+      provider: "s3",
+      sizeBytes,
+      filename,
+      kind,
+      ...(assets.length > 0 ? { assets } : {}),
+    };
   }
-  return { uri: `/api/worker/media/${key}`, provider: "local", sizeBytes, filename };
+  return {
+    uri: `/api/worker/media/${key}`,
+    provider: "local",
+    sizeBytes,
+    filename,
+    kind,
+    ...(assets.length > 0 ? { assets } : {}),
+  };
 }

@@ -222,3 +222,55 @@ def extract_frames(
         {"timestamp": round(float(index) / float(fps), 3), "path": file_path}
         for index, file_path in enumerate(files)
     ]
+
+
+def extract_image_frame(
+    src: str | Path,
+    dst: str | Path,
+    *,
+    max_width: int = 1280,
+    ffmpeg_path: str | None = None,
+) -> dict[str, Any]:
+    """Normalize one still image into the JPEG frame used by vision/OCR.
+
+    Static image inputs have no duration, so the video ``fps`` filter emits
+    no packet. ``-frames:v 1`` converts the first decoded image directly;
+    the scale expression bounds the long edge without changing aspect ratio.
+    """
+    ffmpeg = _ffmpeg_path(ffmpeg_path)
+    destination = Path(dst)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    scale = f"scale='min({max_width},iw)':-2"
+    flatten = (
+        "format=rgba,"
+        "geq="
+        "r='r(X,Y)*alpha(X,Y)+255*(1-alpha(X,Y))':"
+        "g='g(X,Y)*alpha(X,Y)+255*(1-alpha(X,Y))':"
+        "b='b(X,Y)*alpha(X,Y)+255*(1-alpha(X,Y))':"
+        "a=255,"
+        "format=yuv420p"
+    )
+    proc = _run(
+        [
+            ffmpeg,
+            "-y",
+            "-autorotate",
+            "-i",
+            str(src),
+            "-frames:v",
+            "1",
+            "-vf",
+            f"{scale},{flatten}",
+            "-map_metadata",
+            "-1",
+            "-update",
+            "1",
+            "-q:v",
+            "3",
+            str(destination),
+        ]
+    )
+    if proc.returncode != 0 or not destination.is_file() or destination.stat().st_size == 0:
+        detail = proc.stderr.strip()[-300:] if proc.stderr else "no output frame"
+        raise PermanentFailure(f"image conversion failed: {detail}")
+    return {"timestamp": 0.0, "path": destination}

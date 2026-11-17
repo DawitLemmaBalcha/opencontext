@@ -3,11 +3,19 @@ import {
   UPLOAD_LIMITS,
   type DetailLevel,
   type ErrorCode,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
-import { createJob } from "@/server/jobs";
+import {
+  createJob,
+  createJobSources,
+  type CreateJobSource,
+} from "@/server/jobs";
 import { storage } from "@/server/storage";
-import { sanitizeDisplayName, validateUpload } from "@/server/validation/upload";
+import {
+  sanitizeDisplayName,
+  validateStoredMedia,
+  validateUpload,
+} from "@/server/validation/upload";
 
 export interface CreateUploadIntentInput {
   userId: string;
@@ -162,6 +170,7 @@ export type CompleteUploadResult =
   | { kind: "FORBIDDEN" }
   | { kind: "EXPIRED" }
   | { kind: "INCOMPLETE" }
+  | { kind: "INVALID_CONTENT"; message: string }
   | { kind: "OK"; job: Awaited<ReturnType<typeof createJob>> };
 
 export async function completeUpload(
@@ -180,6 +189,16 @@ export async function completeUpload(
   if (object.contentType && object.contentType.toLowerCase() !== intent.mime.toLowerCase()) {
     return { kind: "INCOMPLETE" };
   }
+  if (/^(png|jpe?g|webp|pdf)$/.test(intent.sourceExt)) {
+    const bytes = await storage.get(intent.tempKey);
+    if (!bytes) {
+      return { kind: "INCOMPLETE" };
+    }
+    const content = await validateStoredMedia(bytes, intent.sourceExt);
+    if (!content.ok) {
+      return { kind: "INVALID_CONTENT", message: content.message };
+    }
+  }
 
   const job = await createJob({
     userId,
@@ -191,6 +210,93 @@ export async function completeUpload(
     tempKey: intent.tempKey,
   });
   await prisma.uploadIntent.delete({ where: { id: intent.id } }).catch(() => undefined);
+  return { kind: "OK", job };
+}
+
+export type CompleteUploadBatchResult =
+  | { kind: "NOT_FOUND" }
+  | { kind: "FORBIDDEN" }
+  | { kind: "EXPIRED" }
+  | { kind: "INCOMPLETE" }
+  | { kind: "INVALID_CONTENT"; message: string }
+  | { kind: "OK"; job: Awaited<ReturnType<typeof createJobSources>> };
+
+/**
+ * Commit several independently uploaded images as one ordered image-set job.
+ * Each image keeps its own temporary intent until every object has passed
+ * content validation, so a failed set never creates a partial job.
+ */
+export async function completeUploadBatch(
+  uploadIds: string[],
+  userId: string,
+  detailLevel: DetailLevel,
+): Promise<CompleteUploadBatchResult> {
+  if (new Set(uploadIds).size !== uploadIds.length) {
+    return { kind: "INCOMPLETE" };
+  }
+  const rows = await prisma.uploadIntent.findMany({
+    where: { id: { in: uploadIds } },
+  });
+  if (rows.length !== uploadIds.length) {
+    return { kind: "NOT_FOUND" };
+  }
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const ordered = uploadIds.map((id) => byId.get(id)!);
+  const now = Date.now();
+  if (ordered.some((intent) => intent.userId !== userId)) {
+    return { kind: "FORBIDDEN" };
+  }
+  if (ordered.some((intent) => intent.expiresAt.getTime() <= now)) {
+    return { kind: "EXPIRED" };
+  }
+  if (ordered.some((intent) => !intent.sourceExt.match(/^(png|jpe?g|webp)$/))) {
+    return {
+      kind: "INVALID_CONTENT",
+      message: "Image-set jobs accept PNG, JPG, JPEG, or WebP images only",
+    };
+  }
+
+  const validated: CreateJobSource[] = [];
+  for (const intent of ordered) {
+    const object = await storage.head(intent.tempKey);
+    if (!object || object.sizeBytes !== intent.sizeBytes) {
+      return { kind: "INCOMPLETE" };
+    }
+    if (
+      object.contentType &&
+      object.contentType.toLowerCase() !== intent.mime.toLowerCase()
+    ) {
+      return { kind: "INCOMPLETE" };
+    }
+    const bytes = await storage.get(intent.tempKey);
+    if (!bytes) {
+      return { kind: "INCOMPLETE" };
+    }
+    const content = await validateStoredMedia(bytes, intent.sourceExt);
+    if (!content.ok) {
+      return { kind: "INVALID_CONTENT", message: content.message };
+    }
+    validated.push({
+      filename: intent.filename,
+      extension: intent.sourceExt,
+      sizeBytes: intent.sizeBytes,
+      mime: intent.mime,
+      tempKey: intent.tempKey,
+    });
+  }
+
+  const firstName = ordered[0].filename;
+  const displayName =
+    ordered.length === 1
+      ? firstName
+      : `${ordered.length} images — ${firstName}`;
+  const job = await createJobSources({
+    userId,
+    displayName: sanitizeDisplayName(displayName),
+    detailLevel,
+    sources: validated,
+  });
+  await prisma.uploadIntent.deleteMany({ where: { id: { in: uploadIds } } });
   return { kind: "OK", job };
 }
 

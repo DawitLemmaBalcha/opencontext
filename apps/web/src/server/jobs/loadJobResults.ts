@@ -45,6 +45,7 @@ export async function loadJobResultsData(jobId: string): Promise<JobResultData> 
     })),
     observations: observations.map((row) => ({
       timestampSec: row.timestampSec,
+      ...(row.frameId ? { frameId: row.frameId } : {}),
       certainty: row.certainty,
       sceneTitle: row.sceneTitle ?? undefined,
       visualDescription: row.visualDescription ?? undefined,
@@ -57,6 +58,7 @@ export async function loadJobResultsData(jobId: string): Promise<JobResultData> 
     })),
     ocr: ocrRows.map((row) => ({
       timestampSec: row.timestampSec,
+      ...(row.frameId ? { frameId: row.frameId } : {}),
       text: row.text,
       ...(row.confidence !== null ? { confidence: row.confidence } : {}),
     })),

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ReadinessResponseSchema } from "@opencontext/schemas";
+import { ReadinessResponseSchema } from "@kylosonic/opencontext-schemas";
 import { deploymentEnvironment, evaluateReadiness } from "@/server/readiness";
 
 export const dynamic = "force-dynamic";

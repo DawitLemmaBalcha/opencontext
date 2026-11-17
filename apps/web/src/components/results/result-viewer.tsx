@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { EvidenceRecordSchema } from "@opencontext/schemas";
+import { EvidenceRecordSchema } from "@kylosonic/opencontext-schemas";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tab, TabList, TabPanel, Tabs } from "@/components/ui/tabs";
@@ -31,7 +31,7 @@ export function ResultViewer({
   active = false,
   demo = false,
   onSeek,
-  videoSlot,
+  sourceSlot,
   selectedTimestamp = null,
 }: ResultViewerProps) {
   // results.md B1: Agent Context is the default-selected tab.
@@ -66,9 +66,10 @@ export function ResultViewer({
 
       <VideoArea
         sourceName={job.displayName}
+        sourceKind={job.sourceKind}
         demo={demo}
         selectedTimestamp={selectedTimestamp}
-        videoSlot={videoSlot}
+        sourceSlot={sourceSlot}
       />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -112,6 +113,7 @@ export function ResultViewer({
               <TranscriptPanel
                 segments={result.transcript}
                 audioPresent={job.audioPresent}
+                sourceKind={job.sourceKind}
               />
             </TabPanel>
             <TabPanel id="visual">
@@ -128,7 +130,7 @@ export function ResultViewer({
               />
             </TabPanel>
             <TabPanel id="ocr">
-              <OcrPanel entries={result.ocr} />
+              <OcrPanel entries={result.ocr} sourceKind={job.sourceKind} />
             </TabPanel>
             <TabPanel id="context">
               <ContextPanel
