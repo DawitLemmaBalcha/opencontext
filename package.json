@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run build --workspace @opencontext/schemas && npm run dev --workspace web",
+    "dev": "npm run build --workspace @kylosonic/opencontext-schemas && npm run dev --workspace web",
     "fixture": "node scripts/generate-fixture.mjs",
     "evaluation:video": "node scripts/generate-measured-evaluation-video.mjs",
     "evaluation:hearing-video": "node scripts/generate-hearing-evaluation-video.mjs",
@@ -17,6 +17,6 @@
     "test": "npm run test:contracts && npm run test --workspaces --if-present",
     "test:rate-limit-load": "node scripts/rate-limit-load-test.mjs",
     "test:contracts": "node --test scripts/error-catalog.test.mjs",
-    "build": "npm run build --workspace @opencontext/schemas && npm run build --workspace web"
+    "build": "npm run build --workspace @kylosonic/opencontext-schemas && npm run build --workspace web"
   }
 }

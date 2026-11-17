@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { WorkerFailRequestSchema } from "@opencontext/schemas";
+import { WorkerFailRequestSchema } from "@kylosonic/opencontext-schemas";
 import { failJob } from "@/server/queue";
 import { jobToDetail } from "@/server/jobs";
 import {

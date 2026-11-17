@@ -1,4 +1,4 @@
-import type { DetailLevel } from "@opencontext/schemas";
+import type { DetailLevel } from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import { storage } from "@/server/storage";
 import { initialStageStates } from "./progress";

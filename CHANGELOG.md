@@ -28,7 +28,8 @@ All notable changes are documented here. The project follows
 - Generated-video end-to-end coverage and cross-language contract validation.
 - Docker Compose stack for web, worker, and PostgreSQL.
 - Standalone `opencontext analyze` CLI.
-- Publishable `opencontext-video` Python package and `@opencontext/schemas` npm package.
+- Publishable `opencontext-video` Python package and
+  `@kylosonic/opencontext-schemas` npm package.
 - Patched reachable npm dependency advisories and documented the remaining
   development-tool audit findings.
 - Verified a real Faster Whisper transcription locally and pinned PyAV below

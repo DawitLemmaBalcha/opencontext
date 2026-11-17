@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { CompleteUploadBatchRequestSchema } from "@opencontext/schemas";
+import { CompleteUploadBatchRequestSchema } from "@kylosonic/opencontext-schemas";
 import { auth } from "@/auth";
 import { errorResponse, withErrorHandling } from "@/server/api-helpers";
 import { jobToSummary } from "@/server/jobs";

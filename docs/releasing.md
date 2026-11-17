@@ -3,7 +3,7 @@
 The repository has two publishable artifacts:
 
 - Python distribution `opencontext-video`, including the `opencontext` CLI.
-- npm package `@opencontext/schemas`.
+- npm package `@kylosonic/opencontext-schemas`.
 
 Versions are currently `0.1.0` in both package manifests. A Git tag must be
 `v0.1.0` (without extra text), and the release workflow verifies that the tag,
@@ -23,8 +23,9 @@ Before the first release:
 1. In PyPI, add a pending Trusted Publisher for `opencontext-video` with
    owner `kylosonic`, repository `opencontext`, workflow `release.yml`, and
    environment `pypi`.
-2. Create an npm granular access token that can publish `@opencontext/schemas`
-   and its `opencontext` scope. Store it as the repository secret `NPM_TOKEN`.
+2. Create an npm granular access token that can publish
+   `@kylosonic/opencontext-schemas` under the `@kylosonic` scope. Store it as
+   the repository secret `NPM_TOKEN`.
 3. In repository Settings → Environments, add required reviewers to `pypi` and
    `npm`. This is the human approval gate for publishing.
 

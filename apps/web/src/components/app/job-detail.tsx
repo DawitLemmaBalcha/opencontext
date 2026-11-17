@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import type { JobDetail } from "@opencontext/schemas";
+import type { JobDetail } from "@kylosonic/opencontext-schemas";
 import { formatClock } from "@/components/results/format";
 import { JobHeader } from "@/components/results/job-header";
 import { ResultViewer } from "@/components/results/result-viewer";

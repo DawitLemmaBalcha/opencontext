@@ -6,7 +6,7 @@ import {
   type JobDetail,
   type JobSummary,
   type StageState,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 import { computeExpiresAt, retentionNoteFor } from "./retention";
 
 /** Job → full API payload (GET /api/jobs/[id], worker claim payloads). */

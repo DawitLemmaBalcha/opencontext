@@ -64,7 +64,7 @@ jobs:
           cache: npm
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
-      - run: npm run build --workspace @opencontext/schemas
-      - run: npm publish --workspace @opencontext/schemas --access public --provenance
+      - run: npm run build --workspace @kylosonic/opencontext-schemas
+      - run: npm publish --workspace @kylosonic/opencontext-schemas --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

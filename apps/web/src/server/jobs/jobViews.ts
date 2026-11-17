@@ -4,7 +4,7 @@ import type {
   JobStatus,
   StageName,
   StageState,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 import type {
   AnalysisResultView,
   JobHeaderView,

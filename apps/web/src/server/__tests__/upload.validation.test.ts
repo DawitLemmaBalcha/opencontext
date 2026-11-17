@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { UPLOAD_LIMITS } from "@opencontext/schemas";
+import { UPLOAD_LIMITS } from "@kylosonic/opencontext-schemas";
 import {
   sanitizeDisplayName,
   validateStoredMedia,

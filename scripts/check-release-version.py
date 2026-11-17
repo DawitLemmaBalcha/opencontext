@@ -1,4 +1,4 @@
-"""Fail a release when the Git tag and package versions differ."""
+"""Fail a release when the Git tag and package identities differ."""
 
 from __future__ import annotations
 
@@ -18,9 +18,10 @@ def main() -> int:
     expected = tag[1:]
     with (root / "workers" / "processor" / "pyproject.toml").open("rb") as handle:
         python_version = tomllib.load(handle)["project"]["version"]
-    npm_version = json.loads(
+    npm_package = json.loads(
         (root / "packages" / "schemas" / "package.json").read_text(encoding="utf-8")
-    )["version"]
+    )
+    npm_version = npm_package["version"]
     values = {
         "tag": expected,
         "python": python_version,
@@ -28,6 +29,14 @@ def main() -> int:
     }
     if len(set(values.values())) != 1:
         print(f"Version mismatch: {values}", file=sys.stderr)
+        return 1
+    expected_npm_name = "@kylosonic/opencontext-schemas"
+    if npm_package.get("name") != expected_npm_name:
+        print(
+            f"Expected npm package {expected_npm_name!r}, "
+            f"got {npm_package.get('name')!r}",
+            file=sys.stderr,
+        )
         return 1
     print(f"Release version verified: {expected}")
     return 0

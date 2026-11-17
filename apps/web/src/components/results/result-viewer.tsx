@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { EvidenceRecordSchema } from "@opencontext/schemas";
+import { EvidenceRecordSchema } from "@kylosonic/opencontext-schemas";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tab, TabList, TabPanel, Tabs } from "@/components/ui/tabs";

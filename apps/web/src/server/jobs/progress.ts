@@ -1,4 +1,4 @@
-import { STAGE_WEIGHTS, type StageState } from "@opencontext/schemas";
+import { STAGE_WEIGHTS, type StageState } from "@kylosonic/opencontext-schemas";
 
 /**
  * Overall job progress derived from stageStates using the blueprint

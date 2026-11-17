@@ -1,5 +1,5 @@
 import type { Job } from "@prisma/client";
-import type { MediaKind } from "@opencontext/schemas";
+import type { MediaKind } from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import { storage } from "@/server/storage";
 import { LEASE_MS } from "@/server/queue";

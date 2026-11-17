@@ -10,7 +10,7 @@ import {
   WorkerHeartbeatRequestSchema,
   WorkerProgressRequestSchema,
   WorkerStageResultRequestSchema,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 
 const { authMock } = vi.hoisted(() => ({ authMock: { auth: vi.fn() } }));
 vi.mock("@/auth", () => ({ auth: authMock.auth }));

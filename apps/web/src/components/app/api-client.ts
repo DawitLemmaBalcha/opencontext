@@ -1,4 +1,4 @@
-import type { JobDetail, JobSummary } from "@opencontext/schemas";
+import type { JobDetail, JobSummary } from "@kylosonic/opencontext-schemas";
 
 /**
  * Client-side API helpers for the signed-in job pages. Every route is

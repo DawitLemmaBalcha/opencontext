@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { WorkerProgressRequestSchema } from "@opencontext/schemas";
+import { WorkerProgressRequestSchema } from "@kylosonic/opencontext-schemas";
 import { applyProgress } from "@/server/worker";
 import { jobToDetail } from "@/server/jobs";
 import {

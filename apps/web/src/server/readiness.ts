@@ -10,7 +10,7 @@ import type {
   DeploymentEnvironment,
   ReadinessCheck,
   ReadinessResponse,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 
 export { deploymentEnvironment } from "@opencontext/config";
 

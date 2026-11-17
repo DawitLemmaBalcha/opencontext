@@ -21,7 +21,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(dirname, "src"),
-      "@opencontext/schemas": path.resolve(
+      "@kylosonic/opencontext-schemas": path.resolve(
         dirname,
         "../../packages/schemas/src/index.ts",
       ),

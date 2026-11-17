@@ -1,4 +1,4 @@
-import { type StageState } from "@opencontext/schemas";
+import { type StageState } from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import { computeProgress } from "./progress";
 import { jobToDetail } from "./serialize";

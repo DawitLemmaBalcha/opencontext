@@ -8,7 +8,7 @@ import {
   TranscriptSegmentSchema,
   WorkerProgressRequestSchema,
   WorkerStageResultRequestSchema,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 import { findWorkerPython, workerPythonEnv } from "./python-process";
 
 const python = findWorkerPython();

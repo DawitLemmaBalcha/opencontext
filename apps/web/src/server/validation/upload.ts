@@ -3,7 +3,7 @@ import {
   UPLOAD_LIMITS,
   type ErrorCode,
   type SourceKind,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 import sharp from "sharp";
 
 /**

@@ -13,7 +13,7 @@ import {
   type WorkerProgressRequest,
   type WorkerStageResultRequest,
   type WorkerSourceInfo,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import { storage } from "@/server/storage";
 import { computeProgress } from "@/server/jobs/progress";

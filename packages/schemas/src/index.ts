@@ -1,10 +1,10 @@
 /**
- * @opencontext/schemas — the single cross-language contract between the
+ * @kylosonic/opencontext-schemas — the single cross-language contract between the
  * web API (TypeScript) and the Python worker. Mirrored as JSON Schema /
  * pydantic models on the worker side (ADR-0005).
  *
  * Import from the package root, e.g.:
- *   import { JobStatusSchema, STAGE_WEIGHTS } from "@opencontext/schemas";
+ *   import { JobStatusSchema, STAGE_WEIGHTS } from "@kylosonic/opencontext-schemas";
  */
 
 export * from "./errors.js";

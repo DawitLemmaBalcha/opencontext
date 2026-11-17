@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { WorkerHeartbeatRequestSchema } from "@opencontext/schemas";
+import { WorkerHeartbeatRequestSchema } from "@kylosonic/opencontext-schemas";
 import { applyHeartbeat } from "@/server/worker";
 import { jobToDetail } from "@/server/jobs";
 import {

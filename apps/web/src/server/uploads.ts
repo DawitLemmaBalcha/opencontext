@@ -3,7 +3,7 @@ import {
   UPLOAD_LIMITS,
   type DetailLevel,
   type ErrorCode,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 import { prisma } from "@/server/db/prisma";
 import {
   createJob,

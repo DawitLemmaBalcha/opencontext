@@ -2,14 +2,14 @@
  * Client-side pre-flight checks for the upload form (upload.md B1).
  *
  * The SERVER validation (`src/server/validation/upload.ts`, driven by
- * `@opencontext/schemas` UPLOAD_LIMITS) is authoritative — the 4xx error
+ * `@kylosonic/opencontext-schemas` UPLOAD_LIMITS) is authoritative — the 4xx error
  * envelope always wins. These mirrored rules exist only for instant
  * feedback before bytes leave the browser, so they must keep the same
  * messages and limits. Any drift produces a server-side rejection that
  * the form displays verbatim.
  */
 
-import { sourceKindForExtension, UPLOAD_LIMITS } from "@opencontext/schemas";
+import { sourceKindForExtension, UPLOAD_LIMITS } from "@kylosonic/opencontext-schemas";
 
 export const ALLOWED_EXTENSIONS = UPLOAD_LIMITS.allowedExtensions;
 export const MAX_BYTES = 500 * 1024 * 1024;

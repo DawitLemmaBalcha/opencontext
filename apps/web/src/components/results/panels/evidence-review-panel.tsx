@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { EvidenceRecord } from "@opencontext/schemas";
+import type { EvidenceRecord } from "@kylosonic/opencontext-schemas";
 import { ApiError, patchEvidenceReviewRequest } from "@/components/app/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -153,7 +153,7 @@ opencontext analyze mockup.png --out image.md --json image.json
 opencontext analyze reference.pdf --out pdf.md --json pdf.json
 ```
 
-`@opencontext/schemas` builds to publishable ESM and declarations. Both artifacts
+`@kylosonic/opencontext-schemas` builds to publishable ESM and declarations. Both artifacts
 are release-ready in the source tree but not published. See
 [docs/installable-packages.md](docs/installable-packages.md) and
 [docs/releasing.md](docs/releasing.md).

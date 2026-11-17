@@ -1,9 +1,9 @@
-# @opencontext/schemas
+# @kylosonic/opencontext-schemas
 
 Shared TypeScript and Zod contracts for OpenContext.
 
 ```bash
-npm install @opencontext/schemas
+npm install @kylosonic/opencontext-schemas
 ```
 
 ```ts
@@ -12,7 +12,7 @@ import {
   ContextDataSchema,
   EvidenceRecordSchema,
   WorkerStageResultRequestSchema,
-} from "@opencontext/schemas";
+} from "@kylosonic/opencontext-schemas";
 
 const request = WorkerStageResultRequestSchema.parse({
   stage: "ANALYZING",

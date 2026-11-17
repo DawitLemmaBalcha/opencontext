@@ -12,7 +12,7 @@ import {
   buildResultView,
 } from "@/server/jobs/jobViews";
 import { loadJobResultsData } from "@/server/jobs/loadJobResults";
-import type { StageState } from "@opencontext/schemas";
+import type { StageState } from "@kylosonic/opencontext-schemas";
 import { createUser, resetDatabase } from "./helpers";
 
 /**

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { MediaKindSchema } from "@opencontext/schemas";
+import { MediaKindSchema } from "@kylosonic/opencontext-schemas";
 import { storeArtifact } from "@/server/worker";
 import {
   checkClaim,
